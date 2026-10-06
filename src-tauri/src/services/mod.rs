@@ -24,6 +24,7 @@ pub mod session_usage_grokbuild;
 pub mod session_usage_opencode;
 pub mod session_usage_pi;
 pub mod skill;
+pub(crate) mod skill_native;
 pub mod speedtest;
 pub mod sql_helpers;
 pub mod stream_check;

@@ -425,3 +425,297 @@ fn migration_snapshot_overrides_multi_source_directory_inference() {
         "migration should no longer infer OpenCode enablement from a duplicate directory alone"
     );
 }
+
+fn native_test_skill(id: &str, directory: &str, apps: SkillApps) -> InstalledSkill {
+    InstalledSkill {
+        id: id.to_string(),
+        name: directory.to_string(),
+        description: None,
+        directory: directory.to_string(),
+        repo_owner: None,
+        repo_name: None,
+        repo_branch: None,
+        readme_url: None,
+        apps,
+        installed_at: 1_000,
+        content_hash: None,
+        updated_at: 0,
+    }
+}
+
+fn clean_native_roots(home: &std::path::Path) {
+    for sub in [".agents", ".pi"] {
+        let _ = fs::remove_dir_all(home.join(sub));
+    }
+}
+
+fn codex_row(name: &str, model: &str, base_url: &str) -> serde_json::Value {
+    serde_json::json!({
+        "auth": { "OPENAI_API_KEY": format!("sk-{name}") },
+        "config": format!(
+            "model_provider = \"{name}\"\nmodel = \"{model}\"\n\n[model_providers.{name}]\nname = \"{name}\"\nbase_url = \"{base_url}\"\nwire_api = \"responses\"\n"
+        ),
+    })
+}
+
+/// 关闭写进 `[[skills.config]]` 之后，切换供应商、同步 MCP 都不会把它冲掉；反过来，
+/// 打开时也只删这一条，供应商字段和 MCP 段原样留着。
+#[test]
+fn codex_skill_rule_coexists_with_provider_switch_and_mcp_sync() {
+    use cc_switch_lib::{
+        McpApps, McpServer, McpService, MultiAppConfig, Provider, ProviderService,
+    };
+
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    fs::create_dir_all(home.join(".codex")).expect("create codex dir");
+    fs::write(
+        cc_switch_lib::get_codex_config_path(),
+        "# 用户的注释\napproval_policy = \"on-request\"\n",
+    )
+    .expect("seed config.toml");
+
+    let mut config = MultiAppConfig::default();
+    {
+        let manager = config
+            .get_manager_mut(&AppType::Codex)
+            .expect("codex manager");
+        for (id, model, url) in [
+            ("alpha", "gpt-a", "https://a.example/v1"),
+            ("beta", "gpt-b", "https://b.example/v1"),
+        ] {
+            manager.providers.insert(
+                id.to_string(),
+                Provider::with_id(
+                    id.to_string(),
+                    id.to_string(),
+                    codex_row(id, model, url),
+                    None,
+                ),
+            );
+        }
+    }
+    let state = support::create_test_state_with_config(&config).expect("create test state");
+    ProviderService::switch(&state, AppType::Codex, "alpha").expect("switch to alpha");
+
+    write_skill(
+        &SkillService::get_ssot_dir().unwrap().join("demo-skill"),
+        "demo",
+    );
+    let skill = native_test_skill(
+        "local:demo-skill",
+        "demo-skill",
+        SkillApps {
+            codex: true,
+            ..Default::default()
+        },
+    );
+    state.db.save_skill(&skill).expect("save skill");
+
+    let read = || fs::read_to_string(cc_switch_lib::get_codex_config_path()).unwrap();
+
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Codex, false).expect("disable");
+    let text = read();
+    assert!(
+        text.contains("[[skills.config]]\nname = \"demo\"\nenabled = false"),
+        "{text}"
+    );
+
+    ProviderService::switch(&state, AppType::Codex, "beta").expect("switch to beta");
+    McpService::upsert_server(
+        &state,
+        McpServer {
+            id: "echo".into(),
+            name: "Echo".into(),
+            server: serde_json::json!({ "type": "stdio", "command": "echo" }),
+            apps: McpApps {
+                codex: true,
+                ..Default::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        },
+    )
+    .expect("sync MCP");
+    let text = read();
+    assert!(text.contains("model = \"gpt-b\""), "{text}");
+    assert!(text.contains("[mcp_servers.echo]"), "{text}");
+    assert!(text.contains("name = \"demo\"\nenabled = false"), "{text}");
+    assert!(text.starts_with("# 用户的注释\n"), "{text}");
+
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Codex, true).expect("enable");
+    let text = read();
+    assert!(!text.contains("skills"), "{text}");
+    assert!(text.contains("model = \"gpt-b\""), "{text}");
+    assert!(text.contains("[mcp_servers.echo]"), "{text}");
+    assert!(
+        state
+            .db
+            .get_installed_skill(&skill.id)
+            .unwrap()
+            .unwrap()
+            .apps
+            .codex
+    );
+}
+
+/// 关掉 Claude 里的 Skill 写 `skillOverrides`，个人目录里用户自己放的同名目录不删。
+#[test]
+fn claude_disable_writes_override_and_keeps_a_user_owned_directory() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    let settings_path = cc_switch_lib::get_claude_settings_path();
+    fs::create_dir_all(settings_path.parent().unwrap()).expect("create claude dir");
+    fs::write(&settings_path, "{\n  \"model\": \"opus\"\n}\n").expect("seed settings");
+
+    let state = create_test_state().expect("create test state");
+    write_skill(
+        &SkillService::get_ssot_dir().unwrap().join("demo-skill"),
+        "demo",
+    );
+    let user_copy = home.join(".claude").join("skills").join("demo-skill");
+    write_skill(&user_copy, "demo-user-edit");
+    let skill = native_test_skill(
+        "local:demo-skill",
+        "demo-skill",
+        SkillApps {
+            claude: true,
+            ..Default::default()
+        },
+    );
+    state.db.save_skill(&skill).expect("save skill");
+
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Claude, false).expect("disable");
+    let settings: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+    assert_eq!(settings["skillOverrides"]["demo"], "off");
+    assert_eq!(settings["model"], "opus");
+    assert!(
+        fs::read_to_string(user_copy.join("SKILL.md"))
+            .unwrap()
+            .contains("demo-user-edit"),
+        "a directory CC Switch did not place must not be deleted"
+    );
+
+    // 切换供应商时的重新同步也不能把它当成「关掉的投影」删掉。
+    SkillService::sync_to_app(&state.db, &AppType::Claude).expect("resync");
+    assert!(user_copy.join("SKILL.md").exists());
+
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Claude, true).expect("enable");
+    assert_eq!(
+        fs::read_to_string(&settings_path).unwrap(),
+        "{\n  \"model\": \"opus\"\n}\n"
+    );
+}
+
+/// Pi 也从 `~/.agents/skills` 加载：只在那里的 Skill 也能关，状态按原生事实显示。
+#[test]
+fn pi_can_disable_a_skill_it_loads_from_the_agents_root() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    let agent_dir = home.join(".pi").join("agent");
+    fs::create_dir_all(&agent_dir).expect("create pi agent dir");
+    let settings_path = agent_dir.join("settings.json");
+    fs::write(&settings_path, "{\n  \"defaultModel\": \"m\"\n}").expect("seed pi settings");
+
+    let state = create_test_state().expect("create test state");
+    write_skill(
+        &SkillService::get_ssot_dir().unwrap().join("demo-skill"),
+        "demo",
+    );
+    write_skill(
+        &home.join(".agents").join("skills").join("demo-skill"),
+        "demo",
+    );
+    let skill = native_test_skill("local:demo-skill", "demo-skill", SkillApps::default());
+    state.db.save_skill(&skill).expect("save skill");
+
+    let pi_state = || {
+        SkillService::get_all_installed(&state.db).unwrap()[0]
+            .apps
+            .pi
+    };
+    assert!(
+        pi_state(),
+        "Pi loads ~/.agents/skills, so the skill is active"
+    );
+
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Pi, false).expect("disable");
+    assert!(!pi_state());
+    let settings: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+    let skills = settings["skills"].as_array().expect("skills array");
+    let agents_entry = format!(
+        "-{}",
+        home.join(".agents")
+            .join("skills")
+            .join("demo-skill")
+            .to_string_lossy()
+            .replace('\\', "/")
+    );
+    assert!(
+        skills
+            .iter()
+            .any(|v| v.as_str() == Some(agents_entry.as_str())),
+        "{skills:?}"
+    );
+    assert!(home
+        .join(".agents")
+        .join("skills")
+        .join("demo-skill")
+        .exists());
+
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Pi, true).expect("enable");
+    assert!(pi_state());
+    let settings: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+    assert!(settings.get("skills").is_none(), "{settings}");
+    clean_native_roots(home);
+}
+
+/// 卸载时撤掉 CC Switch 写过的原生关闭项，不留下关着同名 Skill 的孤儿条目。
+#[test]
+fn uninstall_clears_native_disable_rules() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    fs::create_dir_all(home.join(".codex")).expect("create codex dir");
+    let settings_path = cc_switch_lib::get_claude_settings_path();
+    fs::create_dir_all(settings_path.parent().unwrap()).expect("create claude dir");
+
+    let state = create_test_state().expect("create test state");
+    write_skill(
+        &SkillService::get_ssot_dir().unwrap().join("demo-skill"),
+        "demo",
+    );
+    let skill = native_test_skill(
+        "local:demo-skill",
+        "demo-skill",
+        SkillApps {
+            claude: true,
+            codex: true,
+            ..Default::default()
+        },
+    );
+    state.db.save_skill(&skill).expect("save skill");
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Claude, false).unwrap();
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Codex, false).unwrap();
+    assert!(fs::read_to_string(cc_switch_lib::get_codex_config_path())
+        .unwrap()
+        .contains("name = \"demo\""));
+
+    SkillService::uninstall(&state.db, &skill.id).expect("uninstall");
+    assert!(!fs::read_to_string(cc_switch_lib::get_codex_config_path())
+        .unwrap()
+        .contains("demo"));
+    assert!(!fs::read_to_string(&settings_path).unwrap().contains("demo"));
+}

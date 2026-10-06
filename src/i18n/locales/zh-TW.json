@@ -3215,7 +3215,7 @@
       "locationUnified": "通用目錄",
       "openFolder": "打開",
       "openFolderAria": "打開 {{path}}",
-      "unifiedWarning": "Codex、Gemini CLI、OpenCode 等會直接讀這個目錄，各應用的開關對它們不再完全生效。",
+      "unifiedWarning": "Gemini CLI、OpenCode 等會直接讀這個目錄，各應用的開關對它們不再完全生效。Codex 和 Pi 改由它們自己的設定檔關閉。",
       "move": "移動並切換",
       "moving": "正在移動…",
       "moveConfirmTitle": "把 {{count}} 個 Skill 移到 {{path}}？",

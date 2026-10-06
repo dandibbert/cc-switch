@@ -779,9 +779,51 @@ impl SkillService {
     pub fn get_all_installed(db: &Arc<Database>) -> Result<Vec<InstalledSkill>> {
         let mut skills = db.get_all_installed_skills()?;
         for skill in skills.values_mut() {
-            skill.apps.pi = Self::skill_exists_in_app(&skill.directory, &AppType::Pi);
+            skill.apps.pi = Self::pi_active(skill);
         }
         Ok(skills.into_values().collect())
+    }
+
+    /// Pi 实际会不会加载这个 Skill：Pi 自己的目录或 `~/.agents/skills` 里有它，且没有被
+    /// CC Switch 写进 Pi settings 的排除项关掉。Pi 没有数据库列，状态按原生事实现算。
+    fn pi_active(skill: &InstalledSkill) -> bool {
+        let Ok(directory) = Self::require_valid_directory(&skill.directory) else {
+            return false;
+        };
+        let visible = Self::skill_exists_in_app(&directory, &AppType::Pi)
+            || get_agents_skills_dir().is_some_and(|dir| dir.join(&directory).is_dir());
+        visible
+            && !crate::services::skill_native::is_disabled(&AppType::Pi, &Self::native_skill(skill))
+    }
+
+    /// 这个 Skill 在原生配置里的身份：技能名取 SSOT 里 SKILL.md 的 frontmatter `name`
+    /// （Claude Code、Codex 都按它匹配），读不到时用数据库里记的名字。
+    fn native_skill(skill: &InstalledSkill) -> crate::services::skill_native::NativeSkill {
+        let name = Self::get_ssot_dir()
+            .ok()
+            .map(|ssot| ssot.join(&skill.directory).join("SKILL.md"))
+            .filter(|skill_md| skill_md.is_file())
+            .map(|skill_md| Self::read_skill_name_desc(&skill_md, &skill.directory).0)
+            .unwrap_or_else(|| skill.name.clone());
+        crate::services::skill_native::NativeSkill {
+            directory: skill.directory.clone(),
+            name,
+        }
+    }
+
+    /// Unified 模式下 SSOT 就是 `~/.agents/skills`，Codex 会直接从这里加载所有 Skill。
+    /// 没给 Codex 打开的 Skill 只能靠 Codex 自己的配置关掉，否则界面显示关、Codex 照样加载。
+    fn reconcile_codex_unified(skill: &InstalledSkill) -> Result<()> {
+        if crate::settings::get_skill_storage_location() != SkillStorageLocation::Unified
+            || skill.apps.codex
+        {
+            return Ok(());
+        }
+        crate::services::skill_native::set_disabled(
+            &AppType::Codex,
+            &Self::native_skill(skill),
+            true,
+        )
     }
 
     /// Reuse an existing installation or reject a directory owned by another repo.
@@ -1042,6 +1084,10 @@ impl SkillService {
         let skill = db
             .get_installed_skill(id)?
             .ok_or_else(|| anyhow!("Skill not found: {id}"))?;
+        // 文件删掉之前记下原生配置里的技能名，删完再撤掉 CC Switch 写过的关闭项。
+        let native = Self::require_valid_directory(&skill.directory)
+            .ok()
+            .map(|_| Self::native_skill(&skill));
 
         // DB 行可能被同步导入污染（远端快照 raw SQL 直接灌库，绕过安装期校验），
         // 也可能是 v3.11.0 引入 sanitize_install_name 之前留下的存量脏值
@@ -1169,6 +1215,19 @@ impl SkillService {
 
         // 从数据库删除
         db.delete_skill(id)?;
+
+        // 撤掉 CC Switch 写在原生配置里的关闭项，不留下关着同名 Skill 的孤儿条目。
+        if let Some(native) = native {
+            for app in [AppType::Claude, AppType::Codex, AppType::Pi] {
+                if let Err(err) = crate::services::skill_native::set_disabled(&app, &native, false)
+                {
+                    log::warn!(
+                        "卸载 Skill {} 后清理 {app:?} 的原生关闭项失败: {err:#}",
+                        skill.name
+                    );
+                }
+            }
+        }
 
         log::info!(
             "Skill {} 卸载成功{}",
@@ -1935,6 +1994,15 @@ impl SkillService {
             }
         }
 
+        // 切到 Unified 后 Codex 会直接加载新 SSOT 里的全部 Skill：没给它打开的要在它的配置里关掉。
+        if target == SkillStorageLocation::Unified {
+            for skill in skills.values() {
+                if let Err(err) = Self::reconcile_codex_unified(skill) {
+                    result.errors.push(format!("{}: {err:#}", skill.directory));
+                }
+            }
+        }
+
         // 4. 刷新所有应用目录的 symlink（指向新 SSOT）
         for app in AppType::all() {
             let _ = Self::sync_to_app_unlocked(db, &app);
@@ -2095,9 +2163,13 @@ impl SkillService {
 
     /// 切换应用启用状态
     ///
-    /// 启用：复制到应用目录
-    /// 禁用：从应用目录删除
+    /// 启用：投影到应用目录；Claude Code、Codex、Pi 再撤掉原生配置里的关闭项。
+    /// 禁用：Claude Code、Codex、Pi 先在原生配置里关掉（只删投影关不掉：Codex、Pi 还会从
+    /// `~/.agents/skills` 加载，个人目录里也可能有同名目录），再删掉 CC Switch 自己的投影；
+    /// 其余应用只删投影。
     pub fn toggle_app(db: &Arc<Database>, id: &str, app: &AppType, enabled: bool) -> Result<()> {
+        use crate::services::skill_native;
+
         let _state_guard = skill_state_write_guard();
         // 获取当前 skill
         let mut skill = db
@@ -2106,12 +2178,25 @@ impl SkillService {
 
         // 更新状态
         skill.apps.set_enabled_for(app, enabled);
+        let native = skill_native::supports(app).then(|| Self::native_skill(&skill));
 
         // 同步文件
-        if enabled {
-            Self::sync_to_app_dir(&skill.directory, app)?;
-        } else {
-            Self::remove_from_app(&skill.directory, app)?;
+        match (enabled, native) {
+            (true, native) => {
+                Self::sync_to_app_dir(&skill.directory, app)?;
+                if let Some(native) = native {
+                    skill_native::set_disabled(app, &native, false)?;
+                }
+            }
+            (false, Some(native)) => {
+                // Pi 目录里同名但内容不同的 Skill 不是我们的：写配置之前就拒绝，免得把它一起关掉。
+                if matches!(app, AppType::Pi) {
+                    Self::ensure_pi_destination_is_ours(&skill.directory)?;
+                }
+                skill_native::set_disabled(app, &native, true)?;
+                Self::remove_owned_from_app(&skill.directory, app)?;
+            }
+            (false, None) => Self::remove_from_app(&skill.directory, app)?,
         }
 
         // Pi follows its native exists=active rule; other apps keep their
@@ -2123,6 +2208,42 @@ impl SkillService {
         log::info!("Skill {} 的 {:?} 状态已更新为 {}", skill.name, app, enabled);
 
         Ok(())
+    }
+
+    /// Pi 目录里的同名 Skill 是否是 CC Switch 的投影（指向 SSOT 的链接或内容一致的副本）。
+    fn ensure_pi_destination_is_ours(directory: &str) -> Result<()> {
+        let directory = Self::require_valid_directory(directory)?;
+        let ssot_dir = Self::get_ssot_dir()?;
+        let destination =
+            Self::get_distinct_app_skills_dir(&ssot_dir, &AppType::Pi)?.join(&directory);
+        Self::ensure_pi_skill_destination_matches(
+            &ssot_dir.join(&directory),
+            &destination,
+            &directory,
+        )
+    }
+
+    /// 关闭时删投影：只删 CC Switch 自己放的（指向 SSOT 的链接，或和 SSOT 内容一致的副本）。
+    /// 用户自己放的同名目录留着——原生配置已经把这个名字关掉了，不需要也不该删它。
+    fn remove_owned_from_app(directory: &str, app: &AppType) -> Result<()> {
+        if matches!(app, AppType::Pi | AppType::Mcode) {
+            // 这两个应用的删除本来就先校验归属，不是自己的就报错。
+            return Self::remove_from_app(directory, app);
+        }
+        let directory = Self::require_valid_directory(directory)?;
+        let ssot_dir = Self::get_ssot_dir()?;
+        let source = ssot_dir.join(&directory);
+        let destination = Self::get_distinct_app_skills_dir(&ssot_dir, app)?.join(&directory);
+        if !destination.exists() && !Self::is_symlink(&destination) {
+            return Ok(());
+        }
+        if Self::inspect_pi_skill_destination(&source, &destination, &directory).is_err() {
+            log::info!(
+                "{app:?} 里的 Skill {directory} 不是 CC Switch 的投影，保留目录，只靠原生配置关闭"
+            );
+            return Ok(());
+        }
+        Self::remove_path(&destination)
     }
 
     /// 扫描未管理的 Skills
@@ -2355,6 +2476,12 @@ impl SkillService {
 
             // 保存到数据库
             db.save_skill(&skill)?;
+            if let Err(error) = Self::reconcile_codex_unified(&skill) {
+                log::warn!(
+                    "导入 Skill {} 后在 Codex 配置里关闭它失败: {error:#}",
+                    skill.name
+                );
+            }
 
             imported.push(skill);
         }
@@ -2447,6 +2574,12 @@ impl SkillService {
                 );
             }
             return Err(error);
+        }
+        if let Err(error) = Self::reconcile_codex_unified(skill) {
+            log::warn!(
+                "安装 Skill {} 后在 Codex 配置里关闭它失败: {error:#}",
+                skill.name
+            );
         }
         Ok(())
     }
@@ -2866,7 +2999,15 @@ impl SkillService {
                 }
 
                 if let Some(skill) = indexed_skills.get(&dir_name.to_lowercase()) {
-                    if !skill.apps.is_enabled_for(app) {
+                    // 只删 CC Switch 自己的投影（指向 SSOT 的链接或内容一致的副本）。用户自己放的
+                    // 同名目录不是「关掉的投影」，留着；要关它靠原生配置（见 skill_native）。
+                    let source = ssot_dir.join(&skill.directory);
+                    if !skill.apps.is_enabled_for(app)
+                        && matches!(
+                            Self::inspect_pi_skill_destination(&source, &path, &dir_name),
+                            Ok(Some(_))
+                        )
+                    {
                         Self::remove_path(&path)?;
                     }
                     continue;
@@ -5395,6 +5536,60 @@ mod tests {
 
         SkillService::toggle_app(&db, &skill.id, &AppType::Pi, false).expect("disable Pi skill");
         assert!(!SkillService::get_all_installed(&db).unwrap()[0].apps.pi);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn unified_storage_disables_skills_in_codex_that_were_not_given_to_it() {
+        let _location = StorageLocationGuard::set(SkillStorageLocation::Unified);
+        let temp = tempdir().expect("tempdir");
+        let _home = TestHomeGuard::set(temp.path());
+        let _pi_dir = crate::pi_config::test_support::TestAgentDir::new();
+        fs::create_dir_all(temp.path().join(".codex")).expect("create codex dir");
+        write_skill(
+            &temp
+                .path()
+                .join(".claude")
+                .join("skills")
+                .join("claude-only"),
+            "claude-only",
+        );
+        write_skill(
+            &temp.path().join(".claude").join("skills").join("both"),
+            "both",
+        );
+
+        let db = std::sync::Arc::new(Database::memory().expect("memory db"));
+        SkillService::import_from_apps(
+            &db,
+            vec![
+                ImportSkillSelection {
+                    directory: "claude-only".to_string(),
+                    apps: SkillApps {
+                        claude: true,
+                        ..Default::default()
+                    },
+                },
+                ImportSkillSelection {
+                    directory: "both".to_string(),
+                    apps: SkillApps {
+                        claude: true,
+                        codex: true,
+                        ..Default::default()
+                    },
+                },
+            ],
+        )
+        .expect("import");
+
+        // Unified 下 SSOT 就是 Codex 加载的 ~/.agents/skills：没勾 Codex 的要在它的配置里关掉。
+        let config = fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("config.toml written");
+        assert!(
+            config.contains("name = \"claude-only\"\nenabled = false"),
+            "{config}"
+        );
+        assert!(!config.contains("\"both\""), "{config}");
     }
 
     #[test]
