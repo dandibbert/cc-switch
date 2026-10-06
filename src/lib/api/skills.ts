@@ -82,6 +82,22 @@ export interface UnmanagedSkill {
   conflict?: boolean;
 }
 
+/** Claude Code 已安装的插件（来自 `claude plugin list --json`） */
+export interface ClaudePlugin {
+  /** name@marketplace；账号同步的是 name@synced */
+  id: string;
+  version: string;
+  /** user / project / local / managed / synced / session */
+  scope: string;
+  enabled: boolean;
+  /** CC Switch 能不能开关：只有 user、synced */
+  toggleable: boolean;
+  projectPath?: string;
+  /** 插件带的 Skills，以 /插件名:技能名 调用 */
+  skills: string[];
+  errors: string[];
+}
+
 /** 开关和应用实际加载情况对不上的地方 */
 export interface SkillAppNote {
   id: string;
@@ -241,6 +257,20 @@ export const skillsApi = {
   /** 切换 Skill 的应用启用状态 */
   async toggleApp(id: string, app: AppId, enabled: boolean): Promise<boolean> {
     return await invoke("toggle_skill_app", { id, app, enabled });
+  },
+
+  /** Claude Code 已安装的插件 */
+  async listClaudePlugins(): Promise<ClaudePlugin[]> {
+    return await invoke("list_claude_plugins");
+  },
+
+  /** 启用或停用一个用户级 / 账号同步的 Claude Code 插件 */
+  async setClaudePluginEnabled(
+    id: string,
+    scope: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await invoke("set_claude_plugin_enabled", { id, scope, enabled });
   },
 
   /** 开关和应用实际加载情况对不上的地方 */

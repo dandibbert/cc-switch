@@ -13,7 +13,7 @@ mod global_proxy;
 mod hermes;
 mod import_export;
 mod mcp;
-mod misc;
+pub(crate) mod misc;
 mod model_fetch;
 mod omo;
 mod openclaw;

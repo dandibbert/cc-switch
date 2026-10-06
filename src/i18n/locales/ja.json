@@ -4367,7 +4367,8 @@
     },
     "moreMenu": {
       "restore": "バックアップから復元",
-      "repos": "リポジトリの管理"
+      "repos": "リポジトリの管理",
+      "plugins": "Claude Code プラグイン"
     },
     "viewAria": "Skills の表示",
     "viewInstalled": "インストール済み",
@@ -4530,6 +4531,23 @@
       "notLoaded": "チェック済みですが、{{app}} は実際には読み込めません。読み込むフォルダにファイルがないか、{{app}} 自身の設定でオフになっています。",
       "stillLoaded": "チェックしていませんが、{{app}} はまだ読み込みます。読み込むフォルダにこの Skill があり、CC Switch がその設定でオフにできません（アプリ未インストール、または Skill 単位の設定がありません）。",
       "external": "{{app}} が読み込んでいるのは、CC Switch が管理するものではなく、ご自身で置いた同名フォルダです。"
+    },
+    "plugins": {
+      "title": "Claude Code プラグイン",
+      "lead": "一覧は Claude Code 自身の claude plugin list から取得しています。ここで切り替えられるのは個人とアカウント同期のプラグインだけです。インストール、更新、マーケットプレイスは Claude Code の /plugin で行ってください。開いている Claude Code のセッションには再起動が必要な場合があります。",
+      "refresh": "再読み込み",
+      "empty": "インストール済みの Claude Code プラグインはありません。",
+      "skills": "同梱の Skill：{{skills}}",
+      "readOnly": "このレベルのプラグインは Claude Code の /plugin で管理してください。",
+      "readOnlyProject": "プロジェクト {{path}} のプラグインです。そのプロジェクトで /plugin を使って管理してください。",
+      "scope": {
+        "user": "個人",
+        "project": "プロジェクト",
+        "local": "ローカル",
+        "managed": "組織管理",
+        "synced": "アカウント同期",
+        "session": "このセッション"
+      }
     }
   },
   "newLayoutNotice": {

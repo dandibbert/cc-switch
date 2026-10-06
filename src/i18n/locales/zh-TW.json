@@ -4368,7 +4368,8 @@
     },
     "moreMenu": {
       "restore": "從備份還原",
-      "repos": "倉庫管理"
+      "repos": "倉庫管理",
+      "plugins": "Claude Code 外掛"
     },
     "viewAria": "Skills 檢視",
     "viewInstalled": "已安裝",
@@ -4531,6 +4532,23 @@
       "notLoaded": "已勾選，但 {{app}} 實際讀不到它：檔案不在它讀取的目錄裡，或被它自己的設定關掉了。",
       "stillLoaded": "未勾選，但 {{app}} 仍會載入它：它讀取的目錄裡有這個 Skill，而 CC Switch 沒辦法在它的設定裡關掉（應用沒安裝，或它沒有按 Skill 關閉的設定）。",
       "external": "{{app}} 讀到的是你自己放的同名目錄，不是 CC Switch 管理的這一份。"
+    },
+    "plugins": {
+      "title": "Claude Code 外掛",
+      "lead": "清單來自 Claude Code 自己的 claude plugin list。這裡只能開關個人和帳號同步的外掛；安裝、升級、外掛市集請在 Claude Code 裡用 /plugin。已開啟的 Claude Code 工作階段可能要重新啟動才生效。",
+      "refresh": "重新讀取",
+      "empty": "沒有已安裝的 Claude Code 外掛。",
+      "skills": "附帶的 Skill：{{skills}}",
+      "readOnly": "這一級的外掛請在 Claude Code 裡用 /plugin 管理。",
+      "readOnlyProject": "屬於專案 {{path}}，請在那個專案裡用 /plugin 管理。",
+      "scope": {
+        "user": "個人",
+        "project": "專案",
+        "local": "本機",
+        "managed": "組織託管",
+        "synced": "帳號同步",
+        "session": "本次工作階段"
+      }
     }
   },
   "newLayoutNotice": {

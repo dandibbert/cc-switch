@@ -70,6 +70,7 @@ import { RepoManagerPanel } from "./RepoManagerPanel";
 import { SkillImportDialog } from "./SkillImportDialog";
 import { SkillRestoreDialog } from "./SkillRestoreDialog";
 import { SkillsStorageSheet } from "./SkillsStorageSheet";
+import { ClaudePluginsDialog } from "./ClaudePluginsDialog";
 import { useSkillInstallTargets } from "./useSkillInstallTargets";
 import { describeRepoFailures } from "./repoFailures";
 import type { ZipSkippedSkill } from "@/lib/api/skills";
@@ -141,6 +142,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
   const [fails, setFails] = useState<Record<string, WriteFailure>>({});
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
   // 项目扫描的结果：有值时导入对话框显示它，而不是本机已有的
   const [projectSkills, setProjectSkills] = useState<UnmanagedSkill[] | null>(
     null,
@@ -1039,6 +1041,9 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
               <DropdownMenuItem onSelect={() => setStorageOpen(true)}>
                 {t("skills.storageSheet.open")}
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setPluginsOpen(true)}>
+                {t("skillsPage.moreMenu.plugins")}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </>
@@ -1712,6 +1717,9 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
       />
 
       <SkillsStorageSheet open={storageOpen} onOpenChange={setStorageOpen} />
+      {pluginsOpen && (
+        <ClaudePluginsDialog open onOpenChange={setPluginsOpen} />
+      )}
 
       {repoManagerOpen && (
         <RepoManagerContainer onClose={() => setRepoManagerOpen(false)} />

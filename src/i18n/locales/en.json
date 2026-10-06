@@ -4367,7 +4367,8 @@
     },
     "moreMenu": {
       "restore": "Restore from backup",
-      "repos": "Manage repositories"
+      "repos": "Manage repositories",
+      "plugins": "Claude Code plugins"
     },
     "viewAria": "Skills view",
     "viewInstalled": "Installed",
@@ -4530,6 +4531,23 @@
       "notLoaded": "Ticked, but {{app}} can't actually load it: the files aren't in a folder it reads, or its own config turns it off.",
       "stillLoaded": "Not ticked, but {{app}} still loads it: the Skill is in a folder it reads, and CC Switch can't switch it off in its config (the app isn't installed, or it has no per-Skill setting).",
       "external": "{{app}} loads a same-name folder you placed yourself, not the copy CC Switch manages."
+    },
+    "plugins": {
+      "title": "Claude Code plugins",
+      "lead": "Listed by Claude Code's own claude plugin list. Only personal and account-synced plugins can be switched here; install, update and marketplaces stay in Claude Code's /plugin. Open Claude Code sessions may need a restart to pick up a change.",
+      "refresh": "Reload",
+      "empty": "No Claude Code plugins are installed.",
+      "skills": "Bundled Skills: {{skills}}",
+      "readOnly": "Manage plugins at this level with /plugin in Claude Code.",
+      "readOnlyProject": "Belongs to project {{path}}; manage it with /plugin in that project.",
+      "scope": {
+        "user": "Personal",
+        "project": "Project",
+        "local": "Local",
+        "managed": "Managed",
+        "synced": "Account sync",
+        "session": "This session"
+      }
     }
   },
   "newLayoutNotice": {

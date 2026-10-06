@@ -4367,7 +4367,8 @@
     },
     "moreMenu": {
       "restore": "从备份恢复",
-      "repos": "仓库管理"
+      "repos": "仓库管理",
+      "plugins": "Claude Code 插件"
     },
     "viewAria": "Skills 视图",
     "viewInstalled": "已安装",
@@ -4530,6 +4531,23 @@
       "notLoaded": "已勾选，但 {{app}} 实际读不到它：文件不在它读取的目录里，或被它自己的配置关掉了。",
       "stillLoaded": "未勾选，但 {{app}} 仍会加载它：它读取的目录里有这个 Skill，而 CC Switch 没法在它的配置里关掉（应用没装，或它没有按 Skill 关闭的设置）。",
       "external": "{{app}} 读到的是你自己放的同名目录，不是 CC Switch 管理的这一份。"
+    },
+    "plugins": {
+      "title": "Claude Code 插件",
+      "lead": "列表来自 Claude Code 自己的 claude plugin list。这里只能开关个人和账号同步的插件；安装、升级、插件市场请在 Claude Code 里用 /plugin。已打开的 Claude Code 会话可能要重启才生效。",
+      "refresh": "重新读取",
+      "empty": "没有已安装的 Claude Code 插件。",
+      "skills": "带的 Skill：{{skills}}",
+      "readOnly": "这一级的插件请在 Claude Code 里用 /plugin 管理。",
+      "readOnlyProject": "属于项目 {{path}}，请在那个项目里用 /plugin 管理。",
+      "scope": {
+        "user": "个人",
+        "project": "项目",
+        "local": "本地",
+        "managed": "组织托管",
+        "synced": "账号同步",
+        "session": "本次会话"
+      }
     }
   },
   "newLayoutNotice": {

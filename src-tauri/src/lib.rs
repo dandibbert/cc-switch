@@ -1562,6 +1562,8 @@ pub fn run() {
             commands::toggle_skill_app,
             commands::scan_unmanaged_skills,
             commands::get_skill_app_notes,
+            commands::list_claude_plugins,
+            commands::set_claude_plugin_enabled,
             commands::scan_project_skills,
             commands::open_skill_project_dialog,
             commands::import_skills_from_apps,

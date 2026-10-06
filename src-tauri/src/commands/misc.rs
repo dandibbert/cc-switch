@@ -3774,7 +3774,7 @@ pub(crate) fn run_detected_tool_command_with_timeout(
         arg.is_empty()
             || !arg
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '@'))
     }) {
         return Err("Invalid tool command arguments".to_string());
     }

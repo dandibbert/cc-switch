@@ -106,6 +106,31 @@ pub fn get_skill_app_notes(
     SkillService::app_notes(&app_state.db).map_err(|e| e.to_string())
 }
 
+/// Claude Code 已安装的插件（经 `claude plugin list --json`）
+#[tauri::command]
+pub async fn list_claude_plugins(
+) -> Result<Vec<crate::services::claude_plugins::ClaudePlugin>, String> {
+    tauri::async_runtime::spawn_blocking(crate::services::claude_plugins::list)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// 启用或停用一个用户级 / 账号同步的 Claude Code 插件（经 `claude plugin enable|disable`）
+#[tauri::command]
+pub async fn set_claude_plugin_enabled(
+    id: String,
+    scope: String,
+    enabled: bool,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::claude_plugins::set_enabled(&id, &scope, enabled)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
 /// 扫描未管理的 Skills
 #[tauri::command]
 pub fn scan_unmanaged_skills(
