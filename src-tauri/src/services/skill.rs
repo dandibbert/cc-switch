@@ -2183,6 +2183,13 @@ impl SkillService {
         // 同步文件
         match (enabled, native) {
             (true, native) => {
+                // 应用目录里同名但内容不同的目录是用户自己的，打开时不拿 SSOT 的版本盖掉它。
+                let directory = Self::require_valid_directory(&skill.directory)?;
+                Self::preflight_install_destination(
+                    &Self::get_ssot_dir()?.join(&directory),
+                    &directory,
+                    app,
+                )?;
                 Self::sync_to_app_dir(&skill.directory, app)?;
                 if let Some(native) = native {
                     skill_native::set_disabled(app, &native, false)?;
@@ -2546,11 +2553,12 @@ impl SkillService {
     }
 
     fn preflight_install_destination(source: &Path, directory: &str, app: &AppType) -> Result<()> {
-        let ssot_dir = Self::get_ssot_dir()?;
-        let app_dir = Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
-        if !matches!(app, AppType::Pi | AppType::Mcode) {
+        if matches!(app, AppType::ClaudeDesktop) {
             return Ok(());
         }
+        let ssot_dir = Self::get_ssot_dir()?;
+        let app_dir = Self::get_distinct_app_skills_dir(&ssot_dir, app)?;
+        // 应用目录里已有同名但内容不同的 Skill（用户自己放的）：拒绝，不拿 SSOT 的版本盖掉它。
         let destination = app_dir.join(directory);
         if destination.exists() || Self::is_symlink(&destination) {
             Self::ensure_pi_skill_destination_matches(source, &destination, directory)?;
@@ -2633,7 +2641,8 @@ impl SkillService {
         }
 
         Err(anyhow!(
-            "Pi 中已存在同名但内容不同的 Skill，拒绝覆盖或删除: {directory}"
+            "{} 已存在同名但内容不同的 Skill（不是 CC Switch 放的），拒绝覆盖或删除: {directory}",
+            destination.display()
         ))
     }
 

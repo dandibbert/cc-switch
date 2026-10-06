@@ -607,6 +607,18 @@ fn claude_disable_writes_override_and_keeps_a_user_owned_directory() {
     SkillService::sync_to_app(&state.db, &AppType::Claude).expect("resync");
     assert!(user_copy.join("SKILL.md").exists());
 
+    // 打开也不拿 SSOT 的版本盖掉用户的目录：拒绝，什么都不改。
+    SkillService::toggle_app(&state.db, &skill.id, &AppType::Claude, true)
+        .expect_err("enable must not overwrite a user-owned directory");
+    assert!(fs::read_to_string(user_copy.join("SKILL.md"))
+        .unwrap()
+        .contains("demo-user-edit"));
+    assert!(fs::read_to_string(&settings_path)
+        .unwrap()
+        .contains("\"off\""));
+
+    // 用户把自己的目录挪走之后就能打开，关闭项随之撤掉。
+    fs::remove_dir_all(&user_copy).unwrap();
     SkillService::toggle_app(&state.db, &skill.id, &AppType::Claude, true).expect("enable");
     assert_eq!(
         fs::read_to_string(&settings_path).unwrap(),
