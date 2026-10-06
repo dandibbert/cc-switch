@@ -3214,7 +3214,7 @@
       "locationUnified": "共通フォルダ",
       "openFolder": "開く",
       "openFolderAria": "{{path}} を開く",
-      "unifiedWarning": "Gemini CLI、OpenCode などはこのフォルダを直接読むため、アプリごとのスイッチが完全には効かなくなります。Codex と Pi はそれぞれの設定ファイルでオフにします。",
+      "unifiedWarning": "このフォルダを直接読み、スキル単位の設定を持たないアプリでは、アプリごとのスイッチが完全には効かない場合があります。Codex、Gemini CLI、OpenCode、Pi はそれぞれの設定ファイルでオフにします。",
       "move": "移動して切り替え",
       "moving": "移動中…",
       "moveConfirmTitle": "{{count}} 個の Skill を {{path}} に移動しますか？",

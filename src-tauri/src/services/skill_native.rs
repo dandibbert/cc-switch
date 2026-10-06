@@ -8,10 +8,15 @@
 //! - Codex：`~/.codex/config.toml` 的 `[[skills.config]] name = "<name>", enabled = false`
 //!   （只在用户层生效，见 openai/codex#20210）；
 //! - Pi：`~/.pi/agent/settings.json` 的 `skills` 数组里的 `-<绝对路径>`，两个全局根
-//!   （Pi 自己的目录和 `~/.agents/skills`）各一条。
+//!   （Pi 自己的目录和 `~/.agents/skills`）各一条；
+//! - Gemini CLI：`~/.gemini/settings.json` 的 `skills.disabled` 数组里的技能名（不分大小写，
+//!   和 `/skills disable` 写的是同一处）；
+//! - OpenCode：`opencode.json(c)` 的 `permission.skill["<name>"] = "deny"`（deny 即对 agent
+//!   隐藏）。
 //!
-//! 写入都走写入引擎（[`crate::mode::operation::run_files_only`]）：和切换供应商、编辑器、
-//! MCP 同步共用同一把写锁，发布前重读比对，彼此不会覆盖对方刚写进去的键。
+//! 写入都和这个应用自己的其他写入方排队：Claude Code、Codex、Pi、Gemini CLI 走写入引擎
+//! （[`crate::mode::operation::run_files_only`]），和切换供应商、编辑器、MCP 同步共用同一把
+//! 写锁，发布前重读比对；OpenCode 走它自己的 JSONC 编辑器和配置锁，注释原样保留。
 
 use std::path::{Path, PathBuf};
 
@@ -44,7 +49,10 @@ pub(crate) struct NativeSkill {
 
 /// 有原生按 Skill 关闭配置、由这里接管开关的应用。
 pub(crate) fn supports(app: &AppType) -> bool {
-    matches!(app, AppType::Claude | AppType::Codex | AppType::Pi)
+    matches!(
+        app,
+        AppType::Claude | AppType::Codex | AppType::Pi | AppType::Gemini | AppType::OpenCode
+    )
 }
 
 /// 在 `app` 的原生配置里关闭（`disabled = true`）或取消关闭这个 Skill。
@@ -62,6 +70,10 @@ pub(crate) fn set_disabled(app: &AppType, skill: &NativeSkill, disabled: bool) -
     if !config_dir_exists || (!disabled && !target.file.path.exists()) {
         return Ok(());
     }
+    if matches!(app, AppType::OpenCode) {
+        crate::opencode_config::set_skill_denied(&skill.name, disabled)?;
+        return Ok(());
+    }
 
     let patch: Box<dyn LivePatch> = match app {
         AppType::Claude => Box::new(ClaudeOverridePatch {
@@ -75,6 +87,10 @@ pub(crate) fn set_disabled(app: &AppType, skill: &NativeSkill, disabled: bool) -
         }),
         AppType::Pi => Box::new(PiExcludePatch {
             entries: pi_exclude_entries(&skill.directory)?,
+            disabled,
+        }),
+        AppType::Gemini => Box::new(GeminiDisabledPatch {
+            name: skill.name.clone(),
             disabled,
         }),
         _ => return Ok(()),
@@ -93,6 +109,9 @@ pub(crate) fn set_disabled(app: &AppType, skill: &NativeSkill, disabled: bool) -
 
 /// 这个 Skill 是否被 CC Switch 写的原生配置关掉了。读不出或解析不了时按未关闭算。
 pub(crate) fn is_disabled(app: &AppType, skill: &NativeSkill) -> bool {
+    if matches!(app, AppType::OpenCode) {
+        return crate::opencode_config::skill_denied(&skill.name);
+    }
     let Ok(Some(target)) = Target::resolve(app) else {
         return false;
     };
@@ -128,6 +147,17 @@ pub(crate) fn is_disabled(app: &AppType, skill: &NativeSkill) -> bool {
                         .all(|entry| skills.iter().any(|value| value.as_str() == Some(entry)))
                 })
         }
+        AppType::Gemini => json::parse(path, Some(&bytes))
+            .ok()
+            .and_then(|(doc, _)| {
+                json::value_at(&doc, &KeyPath::new(&["skills", "disabled"])).cloned()
+            })
+            .and_then(|disabled| disabled.as_array().cloned())
+            .is_some_and(|disabled| {
+                disabled
+                    .iter()
+                    .any(|value| same_gemini_name(value, &skill.name))
+            }),
         _ => false,
     }
 }
@@ -147,6 +177,13 @@ impl Target {
             },
             AppType::Pi => Self {
                 file: LiveFile::shared(crate::pi_config::get_pi_settings_path()?),
+            },
+            AppType::Gemini => Self {
+                file: LiveFile::shared(crate::gemini_config::get_gemini_settings_path()),
+            },
+            // 只用来判断配置目录、文件在不在；写入走 OpenCode 自己的编辑器。
+            AppType::OpenCode => Self {
+                file: LiveFile::shared(crate::opencode_config::get_opencode_config_path()?),
             },
             _ => return Ok(None),
         }))
@@ -205,6 +242,72 @@ impl LivePatch for ClaudeOverridePatch {
         {
             if let Some(root) = doc.as_object_mut() {
                 root.shift_remove(CLAUDE_OVERRIDES_KEY);
+            }
+        }
+        unchanged_or_serialize(path, pre, &before, &doc, &style)
+    }
+}
+
+// ========== Gemini CLI ==========
+
+/// Gemini CLI 按名字不分大小写匹配 `skills.disabled`。
+fn same_gemini_name(value: &JsonValue, name: &str) -> bool {
+    value
+        .as_str()
+        .is_some_and(|value| value.to_lowercase() == name.to_lowercase())
+}
+
+struct GeminiDisabledPatch {
+    name: String,
+    disabled: bool,
+}
+
+impl LivePatch for GeminiDisabledPatch {
+    fn apply(&self, path: &Path, pre: Option<&[u8]>) -> Result<Vec<u8>, LiveWriteError> {
+        let (mut doc, style) = json::parse(path, pre)?;
+        let before = doc.clone();
+        let shape = |segments: &[&str], expected: &'static str| LiveWriteError::Shape {
+            path: path.to_path_buf(),
+            key_path: KeyPath::new(segments),
+            expected,
+        };
+        let root = doc.as_object_mut().ok_or_else(|| shape(&[], "对象"))?;
+        if !root.contains_key("skills") {
+            if !self.disabled {
+                return Ok(pre.unwrap_or_default().to_vec());
+            }
+            root.insert("skills".to_string(), JsonValue::Object(Default::default()));
+        }
+        let skills = root
+            .get_mut("skills")
+            .and_then(JsonValue::as_object_mut)
+            .ok_or_else(|| shape(&["skills"], "对象"))?;
+        if !skills.contains_key("disabled") {
+            if !self.disabled {
+                return Ok(pre.unwrap_or_default().to_vec());
+            }
+            skills.insert("disabled".to_string(), JsonValue::Array(Vec::new()));
+        }
+        let disabled = skills
+            .get_mut("disabled")
+            .and_then(JsonValue::as_array_mut)
+            .ok_or_else(|| shape(&["skills", "disabled"], "数组"))?;
+        if self.disabled {
+            if !disabled
+                .iter()
+                .any(|value| same_gemini_name(value, &self.name))
+            {
+                disabled.push(JsonValue::from(self.name.as_str()));
+            }
+        } else {
+            let had_entries = !disabled.is_empty();
+            disabled.retain(|value| !same_gemini_name(value, &self.name));
+            // 删到空就把自己建的空壳一并收掉。
+            if had_entries && disabled.is_empty() {
+                skills.shift_remove("disabled");
+                if skills.is_empty() {
+                    root.shift_remove("skills");
+                }
             }
         }
         unchanged_or_serialize(path, pre, &before, &doc, &style)
@@ -624,6 +727,34 @@ command = "fs-server"
         );
         assert_eq!(apply(&pi(true), &off), off);
         assert_eq!(apply(&pi(false), &off), pre);
+    }
+
+    fn gemini(name: &str, disabled: bool) -> GeminiDisabledPatch {
+        GeminiDisabledPatch {
+            name: name.to_string(),
+            disabled,
+        }
+    }
+
+    #[test]
+    fn gemini_disable_round_trips_and_matches_names_case_insensitively() {
+        let pre = "{\n  \"skills\": {\n    \"enabled\": true,\n    \"disabled\": [\n      \"other\"\n    ]\n  }\n}";
+        let off = apply(&gemini("Demo", true), pre);
+        let doc: JsonValue = serde_json::from_str(&off).unwrap();
+        assert_eq!(
+            doc["skills"]["disabled"],
+            serde_json::json!(["other", "Demo"])
+        );
+        assert_eq!(apply(&gemini("demo", true), &off), off, "already disabled");
+        assert_eq!(apply(&gemini("DEMO", false), &off), pre);
+    }
+
+    #[test]
+    fn gemini_cleans_up_what_it_created() {
+        let pre = "{\n  \"security\": {}\n}";
+        let off = apply(&gemini("demo", true), pre);
+        assert_eq!(apply(&gemini("demo", false), &off), pre);
+        assert_eq!(apply(&gemini("demo", false), pre), pre);
     }
 
     #[test]

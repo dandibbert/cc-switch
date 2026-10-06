@@ -2,7 +2,6 @@ use serde_json::{Map, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::atomic_write;
 use crate::error::AppError;
 use crate::gemini_config::get_gemini_settings_path;
 
@@ -18,15 +17,6 @@ fn read_json_value(path: &Path) -> Result<Value, AppError> {
     let content = fs::read_to_string(path).map_err(|e| AppError::io(path, e))?;
     let value: Value = serde_json::from_str(&content).map_err(|e| AppError::json(path, e))?;
     Ok(value)
-}
-
-fn write_json_value(path: &Path, value: &Value) -> Result<(), AppError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
-    }
-    let json =
-        serde_json::to_string_pretty(value).map_err(|e| AppError::JsonSerialize { source: e })?;
-    atomic_write(path, json.as_bytes())
 }
 
 /// 读取 Gemini settings.json 中的 mcpServers 映射
@@ -77,11 +67,6 @@ pub fn set_mcp_servers_map(
     servers: &std::collections::HashMap<String, Value>,
 ) -> Result<(), AppError> {
     let path = user_config_path();
-    let mut root = if path.exists() {
-        read_json_value(&path)?
-    } else {
-        serde_json::json!({})
-    };
 
     // 构建 mcpServers 对象：移除 UI 辅助字段（enabled/source），仅保留实际 MCP 规范
     let mut out: Map<String, Value> = Map::new();
@@ -155,13 +140,22 @@ pub fn set_mcp_servers_map(
         out.insert(id.clone(), Value::Object(obj));
     }
 
-    {
-        let obj = root
-            .as_object_mut()
-            .ok_or_else(|| AppError::Config("~/.gemini/settings.json 根必须是对象".into()))?;
-        obj.insert("mcpServers".into(), Value::Object(out));
-    }
-
-    write_json_value(&path, &root)?;
+    // 经写入引擎只改 mcpServers：和 Gemini 的供应商切换、Skills 开关共用写锁和发布流程，
+    // 不再「读 → 改 → 整份写回」，免得和别的写入交错时覆盖对方刚写进去的键。
+    let patch = crate::live::patch::json::JsonPatch {
+        set: vec![(
+            crate::live::patch::KeyPath::new(&["mcpServers"]),
+            Value::Object(out),
+        )],
+        ..Default::default()
+    };
+    crate::mode::operation::run_files_only(
+        crate::app_config::AppType::Gemini.as_str(),
+        crate::mode::state::op::MCP,
+        &[crate::mode::operation::FileChange {
+            file: crate::live::engine::LiveFile::shared(path),
+            patch: &patch,
+        }],
+    )?;
     Ok(())
 }

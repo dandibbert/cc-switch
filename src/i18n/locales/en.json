@@ -3214,7 +3214,7 @@
       "locationUnified": "Shared folder",
       "openFolder": "Open",
       "openFolderAria": "Open {{path}}",
-      "unifiedWarning": "Gemini CLI, OpenCode and others read this folder directly, so the per-app switches no longer fully apply to them. Codex and Pi are switched off through their own config instead.",
+      "unifiedWarning": "Apps that read this folder directly and have no per-skill setting may not fully follow the per-app switches. Codex, Gemini CLI, OpenCode and Pi are switched off through their own config instead.",
       "move": "Move and switch",
       "moving": "Moving…",
       "moveConfirmTitle": "Move {{count}} Skills to {{path}}?",

@@ -811,19 +811,28 @@ impl SkillService {
         }
     }
 
-    /// Unified 模式下 SSOT 就是 `~/.agents/skills`，Codex 会直接从这里加载所有 Skill。
-    /// 没给 Codex 打开的 Skill 只能靠 Codex 自己的配置关掉，否则界面显示关、Codex 照样加载。
-    fn reconcile_codex_unified(skill: &InstalledSkill) -> Result<()> {
-        if crate::settings::get_skill_storage_location() != SkillStorageLocation::Unified
-            || skill.apps.codex
-        {
+    /// Unified 模式下 SSOT 就是 `~/.agents/skills`，Codex、Gemini CLI、OpenCode 都会直接从这里
+    /// 加载所有 Skill。没给它们打开的 Skill 只能靠它们自己的配置关掉，否则界面显示关、应用
+    /// 照样加载。（Pi 也读这里，但它的状态本来就按原生事实现算，见 [`Self::pi_active`]。）
+    fn reconcile_unified(skill: &InstalledSkill) -> Result<()> {
+        if crate::settings::get_skill_storage_location() != SkillStorageLocation::Unified {
             return Ok(());
         }
-        crate::services::skill_native::set_disabled(
-            &AppType::Codex,
-            &Self::native_skill(skill),
-            true,
-        )
+        let native = Self::native_skill(skill);
+        let mut errors = Vec::new();
+        for app in [AppType::Codex, AppType::Gemini, AppType::OpenCode] {
+            if skill.apps.is_enabled_for(&app) {
+                continue;
+            }
+            if let Err(err) = crate::services::skill_native::set_disabled(&app, &native, true) {
+                errors.push(format!("{}: {err:#}", app.as_str()));
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(anyhow!(errors.join("; ")))
+        }
     }
 
     /// Reuse an existing installation or reject a directory owned by another repo.
@@ -1218,7 +1227,7 @@ impl SkillService {
 
         // 撤掉 CC Switch 写在原生配置里的关闭项，不留下关着同名 Skill 的孤儿条目。
         if let Some(native) = native {
-            for app in [AppType::Claude, AppType::Codex, AppType::Pi] {
+            for app in AppType::all().filter(crate::services::skill_native::supports) {
                 if let Err(err) = crate::services::skill_native::set_disabled(&app, &native, false)
                 {
                     log::warn!(
@@ -1994,10 +2003,11 @@ impl SkillService {
             }
         }
 
-        // 切到 Unified 后 Codex 会直接加载新 SSOT 里的全部 Skill：没给它打开的要在它的配置里关掉。
+        // 切到 Unified 后 Codex、Gemini CLI、OpenCode 会直接加载新 SSOT 里的全部 Skill：
+        // 没给它们打开的要在它们自己的配置里关掉。
         if target == SkillStorageLocation::Unified {
             for skill in skills.values() {
-                if let Err(err) = Self::reconcile_codex_unified(skill) {
+                if let Err(err) = Self::reconcile_unified(skill) {
                     result.errors.push(format!("{}: {err:#}", skill.directory));
                 }
             }
@@ -2483,9 +2493,9 @@ impl SkillService {
 
             // 保存到数据库
             db.save_skill(&skill)?;
-            if let Err(error) = Self::reconcile_codex_unified(&skill) {
+            if let Err(error) = Self::reconcile_unified(&skill) {
                 log::warn!(
-                    "导入 Skill {} 后在 Codex 配置里关闭它失败: {error:#}",
+                    "导入 Skill {} 后在未勾选应用的配置里关闭它失败: {error:#}",
                     skill.name
                 );
             }
@@ -2583,9 +2593,9 @@ impl SkillService {
             }
             return Err(error);
         }
-        if let Err(error) = Self::reconcile_codex_unified(skill) {
+        if let Err(error) = Self::reconcile_unified(skill) {
             log::warn!(
-                "安装 Skill {} 后在 Codex 配置里关闭它失败: {error:#}",
+                "安装 Skill {} 后在未勾选应用的配置里关闭它失败: {error:#}",
                 skill.name
             );
         }
@@ -5555,6 +5565,9 @@ mod tests {
         let _home = TestHomeGuard::set(temp.path());
         let _pi_dir = crate::pi_config::test_support::TestAgentDir::new();
         fs::create_dir_all(temp.path().join(".codex")).expect("create codex dir");
+        fs::create_dir_all(temp.path().join(".gemini")).expect("create gemini dir");
+        fs::create_dir_all(temp.path().join(".config").join("opencode"))
+            .expect("create opencode dir");
         write_skill(
             &temp
                 .path()
@@ -5584,6 +5597,8 @@ mod tests {
                     apps: SkillApps {
                         claude: true,
                         codex: true,
+                        gemini: true,
+                        opencode: true,
                         ..Default::default()
                     },
                 },
@@ -5599,6 +5614,21 @@ mod tests {
             "{config}"
         );
         assert!(!config.contains("\"both\""), "{config}");
+
+        // Gemini CLI、OpenCode 也直接读 ~/.agents/skills，同样在它们自己的配置里关掉。
+        let gemini: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(crate::gemini_config::get_gemini_settings_path()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            gemini["skills"]["disabled"],
+            serde_json::json!(["claude-only"])
+        );
+        let opencode = crate::opencode_config::read_opencode_config().unwrap();
+        assert_eq!(
+            opencode["permission"]["skill"],
+            serde_json::json!({ "claude-only": "deny" })
+        );
     }
 
     #[test]

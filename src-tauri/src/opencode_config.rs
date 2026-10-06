@@ -676,6 +676,87 @@ fn remove_plugins(config: &mut Value, prefixes: &[&str]) {
     }
 }
 
+/// 在 OpenCode 的 `permission.skill` 里拒绝（`denied = true`）或撤掉对这个 Skill 的拒绝。
+///
+/// OpenCode 按 `permission.skill` 过滤 agent 能看到的 Skill（`deny` 即隐藏），后写的规则
+/// 覆盖先写的通配。只增删 `"<name>": "deny"` 这一条；`permission.skill` 写成字符串时：
+/// 已是 `"deny"`（全部拒绝）就不用动，其余展开成 `{"*": 原值, "<name>": "deny"}`，语义不变。
+/// 文件不存在且只是撤销时什么都不写。
+pub(crate) fn set_skill_denied(name: &str, denied: bool) -> Result<(), AppError> {
+    try_edit_config(get_opencode_config_path, |config| {
+        apply_skill_denied(config, name, denied)
+    })
+    .map(|_| ())
+}
+
+/// OpenCode 的 `permission.skill` 是否有 `"<name>": "deny"`（只认这一条，不展开通配）。
+pub(crate) fn skill_denied(name: &str) -> bool {
+    read_opencode_config()
+        .ok()
+        .and_then(|config| {
+            config
+                .pointer("/permission/skill")
+                .and_then(Value::as_object)
+                .and_then(|rules| rules.get(name))
+                .and_then(Value::as_str)
+                .map(|value| value == "deny")
+        })
+        .unwrap_or(false)
+}
+
+fn apply_skill_denied(config: &mut Value, name: &str, denied: bool) -> Result<(), AppError> {
+    let shape = |what: &str| {
+        AppError::Config(format!(
+            "OpenCode 配置里的 {what} 不是对象，为避免覆盖你的配置，没有写入"
+        ))
+    };
+    let root = config.as_object_mut().ok_or_else(|| shape("根"))?;
+    if !root.contains_key("permission") {
+        if !denied {
+            return Ok(());
+        }
+        root.insert("permission".to_string(), json!({}));
+    }
+    let permission = root
+        .get_mut("permission")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| shape("permission"))?;
+    match permission.get("skill") {
+        None if !denied => return Ok(()),
+        None => {
+            permission.insert("skill".to_string(), json!({}));
+        }
+        Some(Value::String(all)) if all == "deny" || !denied => return Ok(()),
+        Some(Value::String(all)) => {
+            let all = all.clone();
+            permission.insert("skill".to_string(), json!({ "*": all }));
+        }
+        Some(Value::Object(_)) => {}
+        Some(_) => return Err(shape("permission.skill")),
+    }
+    let rules = permission
+        .get_mut("skill")
+        .and_then(Value::as_object_mut)
+        .expect("permission.skill was just ensured to be an object");
+    if denied {
+        // 先删再追加：放到最后，盖过前面的通配。
+        rules.shift_remove(name);
+        rules.insert(name.to_string(), json!("deny"));
+        return Ok(());
+    }
+    if rules.get(name).and_then(Value::as_str) != Some("deny") {
+        return Ok(());
+    }
+    rules.shift_remove(name);
+    if rules.is_empty() {
+        permission.shift_remove("skill");
+        if permission.is_empty() {
+            root.shift_remove("permission");
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1441,5 +1522,58 @@ mod tests {
             assert!(document.save().is_err());
             assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
         }
+    }
+
+    #[test]
+    fn skill_deny_rule_round_trips_and_keeps_user_rules() {
+        let mut config = json!({
+            "$schema": "https://opencode.ai/config.json",
+            "permission": { "edit": "ask", "skill": { "*": "allow", "internal-*": "deny" } }
+        });
+        let original = config.clone();
+        apply_skill_denied(&mut config, "demo", true).unwrap();
+        assert_eq!(
+            config["permission"]["skill"],
+            json!({ "*": "allow", "internal-*": "deny", "demo": "deny" })
+        );
+        apply_skill_denied(&mut config, "demo", false).unwrap();
+        assert_eq!(config, original);
+    }
+
+    #[test]
+    fn skill_deny_rule_cleans_up_what_it_created() {
+        let mut config = json!({ "model": "m" });
+        apply_skill_denied(&mut config, "demo", true).unwrap();
+        assert_eq!(config["permission"], json!({ "skill": { "demo": "deny" } }));
+        apply_skill_denied(&mut config, "demo", false).unwrap();
+        assert_eq!(config, json!({ "model": "m" }));
+    }
+
+    #[test]
+    fn skill_deny_rule_expands_a_string_permission_without_changing_meaning() {
+        let mut config = json!({ "permission": { "skill": "ask" } });
+        apply_skill_denied(&mut config, "demo", true).unwrap();
+        assert_eq!(
+            config["permission"]["skill"],
+            json!({ "*": "ask", "demo": "deny" })
+        );
+        let mut all_denied = json!({ "permission": { "skill": "deny" } });
+        apply_skill_denied(&mut all_denied, "demo", true).unwrap();
+        assert_eq!(all_denied, json!({ "permission": { "skill": "deny" } }));
+    }
+
+    #[test]
+    fn skill_deny_rule_keeps_a_user_allow_on_enable() {
+        let mut config = json!({ "permission": { "skill": { "demo": "allow" } } });
+        let original = config.clone();
+        apply_skill_denied(&mut config, "demo", false).unwrap();
+        assert_eq!(config, original);
+    }
+
+    #[test]
+    fn skill_deny_rule_refuses_a_malformed_permission() {
+        let mut config = json!({ "permission": "allow" });
+        assert!(apply_skill_denied(&mut config, "demo", true).is_err());
+        assert_eq!(config, json!({ "permission": "allow" }));
     }
 }
