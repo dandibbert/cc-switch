@@ -4442,7 +4442,8 @@
       "noUpdatesInSelection": "None of the selected Skills have updates",
       "selectionAlreadyOn": "The {{count}} selected Skills are already enabled in {{app}}",
       "selectionAlreadyOff": "None of the {{count}} selected Skills are enabled in {{app}}",
-      "disabledSelection": "Turned off {{count}} {{noun}} in {{app}}"
+      "disabledSelection": "Turned off {{count}} {{noun}} in {{app}}",
+      "restartToApply": "Saved to {{app}}'s config. Restart {{app}} to apply it."
     },
     "installTo": {
       "prefix": "Install to: ",
@@ -4524,7 +4525,12 @@
     "headerUpdates": "{{count}} updates",
     "headerUpdatesShow": "Show only Skills with updates",
     "headerUpdatesClear": "Show all Skills",
-    "updateAllCount": "Update all ({{count}})"
+    "updateAllCount": "Update all ({{count}})",
+    "cellNote": {
+      "notLoaded": "Ticked, but {{app}} can't actually load it: the files aren't in a folder it reads, or its own config turns it off.",
+      "stillLoaded": "Not ticked, but {{app}} still loads it: the Skill is in a folder it reads, and CC Switch can't switch it off in its config (the app isn't installed, or it has no per-Skill setting).",
+      "external": "{{app}} loads a same-name folder you placed yourself, not the copy CC Switch manages."
+    }
   },
   "newLayoutNotice": {
     "title": "CC Switch has a new look",

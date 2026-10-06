@@ -98,6 +98,14 @@ pub fn toggle_skill_app(
     Ok(true)
 }
 
+/// 开关和应用实际加载情况对不上的地方（显示在技能卡片的格子上）
+#[tauri::command]
+pub fn get_skill_app_notes(
+    app_state: State<'_, AppState>,
+) -> Result<Vec<crate::services::skill::SkillAppNote>, String> {
+    SkillService::app_notes(&app_state.db).map_err(|e| e.to_string())
+}
+
 /// 扫描未管理的 Skills
 #[tauri::command]
 pub fn scan_unmanaged_skills(

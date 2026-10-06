@@ -4442,7 +4442,8 @@
       "noUpdatesInSelection": "選択した Skill に更新はありません",
       "selectionAlreadyOn": "選択した {{count}} 件の Skill は既に {{app}} で有効です",
       "selectionAlreadyOff": "選択した {{count}} 件の Skill はどれも {{app}} で有効ではありません",
-      "disabledSelection": "{{app}} で {{count}} 件の {{noun}} をオフにしました"
+      "disabledSelection": "{{app}} で {{count}} 件の {{noun}} をオフにしました",
+      "restartToApply": "{{app}} の設定に書き込みました。{{app}} を再起動すると反映されます。"
     },
     "installTo": {
       "prefix": "インストール先：",
@@ -4524,7 +4525,12 @@
     "headerUpdates": "{{count}} 件の更新",
     "headerUpdatesShow": "更新がある Skill だけを表示",
     "headerUpdatesClear": "すべての Skill を表示",
-    "updateAllCount": "すべて更新（{{count}} 件）"
+    "updateAllCount": "すべて更新（{{count}} 件）",
+    "cellNote": {
+      "notLoaded": "チェック済みですが、{{app}} は実際には読み込めません。読み込むフォルダにファイルがないか、{{app}} 自身の設定でオフになっています。",
+      "stillLoaded": "チェックしていませんが、{{app}} はまだ読み込みます。読み込むフォルダにこの Skill があり、CC Switch がその設定でオフにできません（アプリ未インストール、または Skill 単位の設定がありません）。",
+      "external": "{{app}} が読み込んでいるのは、CC Switch が管理するものではなく、ご自身で置いた同名フォルダです。"
+    }
   },
   "newLayoutNotice": {
     "title": "画面が新しくなりました",

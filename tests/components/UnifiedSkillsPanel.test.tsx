@@ -6,6 +6,7 @@ import UnifiedSkillsPanel from "@/components/skills/UnifiedSkillsPanel";
 import { skillsApi } from "@/lib/api";
 import type {
   InstalledSkill,
+  SkillAppNote,
   SkillBackupEntry,
   SkillRepoFailure,
   SkillUpdateInfo,
@@ -28,6 +29,7 @@ const m = vi.hoisted(() => ({
   toastWarning: vi.fn(),
   toastInfo: vi.fn(),
   installed: [] as InstalledSkill[],
+  notes: [] as SkillAppNote[],
   backups: [] as SkillBackupEntry[],
   updates: [] as SkillUpdateInfo[],
   repoFailures: [] as SkillRepoFailure[],
@@ -55,6 +57,7 @@ vi.mock("@/components/skills/SkillsStorageSheet", () => ({
 }));
 
 vi.mock("@/hooks/useSkills", () => ({
+  useSkillAppNotes: () => ({ data: m.notes }),
   useInstalledSkills: () => ({
     data: m.installed,
     isLoading: false,
@@ -164,6 +167,7 @@ async function openMenu(trigger: string, item: string) {
 describe("UnifiedSkillsPanel", () => {
   beforeEach(() => {
     m.installed = [];
+    m.notes = [];
     m.backups = [];
     m.updates = [];
     m.repoFailures = [];
@@ -227,6 +231,36 @@ describe("UnifiedSkillsPanel", () => {
         enabled: false,
       }),
     );
+  });
+
+  it("marks cells whose app loading disagrees with the switch", async () => {
+    m.installed = [makeSkill({ apps: { claude: true } })];
+    m.notes = [
+      { id: "owner/repo:alpha-skill", app: "codex", state: "stillLoaded" },
+    ];
+    renderPanel();
+    expect(screen.getAllByTestId("matrix-cell-note")).toHaveLength(1);
+    const cells = screen.getAllByRole("button", { name: /appMatrix.cell/ });
+    expect(cells[1]).toHaveAccessibleName(
+      "appMatrix.cell.off. skillsPage.cellNote.stillLoaded",
+    );
+  });
+
+  it("reminds once that Codex needs a restart after its config changed", async () => {
+    m.installed = [makeSkill({ apps: { claude: true, codex: true } })];
+    renderPanel();
+    const codexCell = () =>
+      screen.getAllByRole("button", { name: /appMatrix.cell/ })[1];
+    await userEvent.click(codexCell());
+    await waitFor(() =>
+      expect(m.toastInfo).toHaveBeenCalledWith(
+        "skillsPage.toast.restartToApply",
+        { closeButton: true },
+      ),
+    );
+    await userEvent.click(codexCell());
+    await waitFor(() => expect(m.toggle).toHaveBeenCalledTimes(2));
+    expect(m.toastInfo).toHaveBeenCalledTimes(1);
   });
 
   it("hides the Pi column only when Pi is hidden on the Apps page", () => {

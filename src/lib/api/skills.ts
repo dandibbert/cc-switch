@@ -82,6 +82,14 @@ export interface UnmanagedSkill {
   conflict?: boolean;
 }
 
+/** 开关和应用实际加载情况对不上的地方 */
+export interface SkillAppNote {
+  id: string;
+  app: AppId;
+  /** notLoaded：勾了却读不到；stillLoaded：没勾仍会加载；external：读到的是用户自己的同名目录 */
+  state: "notLoaded" | "stillLoaded" | "external";
+}
+
 /** 导入已有 Skill 时提交的应用启用状态 */
 export interface ImportSkillSelection {
   directory: string;
@@ -233,6 +241,11 @@ export const skillsApi = {
   /** 切换 Skill 的应用启用状态 */
   async toggleApp(id: string, app: AppId, enabled: boolean): Promise<boolean> {
     return await invoke("toggle_skill_app", { id, app, enabled });
+  },
+
+  /** 开关和应用实际加载情况对不上的地方 */
+  async getAppNotes(): Promise<SkillAppNote[]> {
+    return await invoke("get_skill_app_notes");
   },
 
   /** 扫描未管理的 Skills */

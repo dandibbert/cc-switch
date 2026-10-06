@@ -421,6 +421,18 @@ pub struct ImportSkillSelection {
     pub source_path: Option<String>,
 }
 
+/// 某个 Skill 在某个应用里「开关」和「应用实际会不会加载」对不上的地方。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillAppNote {
+    pub id: String,
+    pub app: String,
+    /// `notLoaded`：勾了，应用却读不到（文件不在它读的目录里，或被它自己的配置关掉了）；
+    /// `stillLoaded`：没勾，应用仍会加载（它读的目录里有，又没有按 Skill 关闭的配置）；
+    /// `external`：应用读到的是用户自己放的同名目录，不是 CC Switch 管理的这份。
+    pub state: String,
+}
+
 /// 导入扫描的最大深度：嵌套仓库（`skills/<repo>/<skill>/SKILL.md`）也能拆出来，又不至于
 /// 把整个 home 扫一遍。
 const IMPORT_SCAN_MAX_DEPTH: usize = 4;
@@ -805,6 +817,88 @@ impl SkillService {
             skill.apps.pi = Self::pi_active(skill);
         }
         Ok(skills.into_values().collect())
+    }
+
+    /// 各应用在用户级会从哪些目录加载 Skill（按各家文档和源码）：自己的 skills 目录；
+    /// Codex、Gemini CLI、OpenCode、Pi 还读 `~/.agents/skills`；OpenCode 还读
+    /// `~/.claude/skills` 和自己的 `skill/`。
+    fn app_read_roots(app: &AppType) -> Vec<PathBuf> {
+        let mut roots = Vec::new();
+        if let Ok(own) = Self::get_app_skills_dir(app) {
+            if matches!(app, AppType::OpenCode) {
+                if let Some(parent) = own.parent() {
+                    roots.push(parent.join("skill"));
+                }
+            }
+            roots.push(own);
+        }
+        if matches!(
+            app,
+            AppType::Codex | AppType::Gemini | AppType::OpenCode | AppType::Pi
+        ) {
+            roots.push(crate::config::get_home_dir().join(".agents").join("skills"));
+        }
+        if matches!(app, AppType::OpenCode) {
+            if let Ok(claude) = Self::get_app_skills_dir(&AppType::Claude) {
+                roots.push(claude);
+            }
+        }
+        roots
+    }
+
+    /// 每个 Skill 在每个应用里，开关和应用实际加载情况对不上的地方（对得上的不列）。
+    /// Pi 的开关本来就按原生事实现算，不会对不上；Claude Desktop、OpenClaw 不同步 Skills。
+    pub fn app_notes(db: &Arc<Database>) -> Result<Vec<SkillAppNote>> {
+        let _state_guard = skill_state_read_guard();
+        let ssot_dir = Self::get_ssot_dir()?;
+        let mut notes = Vec::new();
+        let mut skills: Vec<InstalledSkill> =
+            db.get_all_installed_skills()?.into_values().collect();
+        skills.sort_by(|a, b| a.id.cmp(&b.id));
+        for skill in &skills {
+            let Ok(directory) = Self::require_valid_directory(&skill.directory) else {
+                continue;
+            };
+            let native = Self::native_skill(skill);
+            let source = ssot_dir.join(&directory);
+            for app in AppType::all() {
+                if matches!(
+                    app,
+                    AppType::Pi | AppType::ClaudeDesktop | AppType::OpenClaw
+                ) {
+                    continue;
+                }
+                let present = Self::app_read_roots(&app)
+                    .iter()
+                    .any(|root| root.join(&directory).is_dir());
+                let natively_off = crate::services::skill_native::supports(&app)
+                    && crate::services::skill_native::is_disabled(&app, &native);
+                let loaded = present && !natively_off;
+                let external = Self::get_app_skills_dir(&app)
+                    .map(|dir| dir.join(&directory))
+                    .is_ok_and(|own| {
+                        (own.exists() || Self::is_symlink(&own))
+                            && Self::inspect_pi_skill_destination(&source, &own, &directory)
+                                .is_err()
+                    });
+                let desired = skill.apps.is_enabled_for(&app);
+                let state = if desired && loaded && external {
+                    "external"
+                } else if desired && !loaded {
+                    "notLoaded"
+                } else if !desired && loaded {
+                    "stillLoaded"
+                } else {
+                    continue;
+                };
+                notes.push(SkillAppNote {
+                    id: skill.id.clone(),
+                    app: app.as_str().to_string(),
+                    state: state.to_string(),
+                });
+            }
+        }
+        Ok(notes)
     }
 
     /// Pi 实际会不会加载这个 Skill：Pi 自己的目录或 `~/.agents/skills` 里有它，且没有被

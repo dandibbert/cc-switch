@@ -95,6 +95,8 @@ interface MatrixCellProps {
   app?: AppId;
   /** 「serena · Codex：已启用」 */
   label: string;
+  /** 开关和应用实际情况对不上时的说明：格子角上标一个点，悬停时显示在 label 下面 */
+  note?: string;
   onClick: () => void;
   disabled?: boolean;
 }
@@ -107,25 +109,44 @@ export function MatrixCell({
   state,
   app,
   label,
+  note,
   onClick,
   disabled,
 }: MatrixCellProps) {
   const tracking = useColumnTracking(app);
   return (
     <span className="flex w-9 shrink-0 justify-center" {...tracking}>
-      <HoverTip content={label}>
+      <HoverTip
+        content={
+          note ? (
+            <span className="flex max-w-[260px] flex-col gap-0.5">
+              <span>{label}</span>
+              <span className="text-warning-text">{note}</span>
+            </span>
+          ) : (
+            label
+          )
+        }
+      >
         <button
           type="button"
           aria-pressed={state === "on"}
-          aria-label={label}
+          aria-label={note ? `${label}. ${note}` : label}
           disabled={disabled}
           data-state={state}
           onClick={(event) => {
             event.stopPropagation();
             onClick();
           }}
-          className="group/cell flex h-7 w-7 items-center justify-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
+          className="group/cell relative flex h-7 w-7 items-center justify-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
         >
+          {note && (
+            <span
+              aria-hidden="true"
+              data-testid="matrix-cell-note"
+              className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-warning"
+            />
+          )}
           <span
             aria-hidden="true"
             className={cn(

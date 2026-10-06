@@ -1561,6 +1561,7 @@ pub fn run() {
             commands::restore_skill_backup,
             commands::toggle_skill_app,
             commands::scan_unmanaged_skills,
+            commands::get_skill_app_notes,
             commands::scan_project_skills,
             commands::open_skill_project_dialog,
             commands::import_skills_from_apps,

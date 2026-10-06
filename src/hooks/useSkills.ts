@@ -34,6 +34,16 @@ export function useInstalledSkills() {
   });
 }
 
+/** 开关和应用实际加载情况对不上的地方。挂在 installed 下面：改了开关就一起刷新。 */
+export function useSkillAppNotes() {
+  return useQuery({
+    queryKey: ["skills", "installed", "appNotes"],
+    queryFn: () => skillsApi.getAppNotes(),
+    staleTime: Infinity,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useSkillBackups() {
   return useQuery({
     queryKey: ["skills", "backups"],

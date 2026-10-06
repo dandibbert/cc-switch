@@ -937,3 +937,102 @@ fn project_scan_lists_project_skills_and_rejects_foreign_paths() {
     assert!(err.to_string().contains("stray"), "{err}");
     assert!(!SkillService::get_ssot_dir().unwrap().join("stray").exists());
 }
+
+/// 卡片上的提示：勾了却读不到、没勾却仍会加载、读到的是用户自己的同名目录。
+#[test]
+fn app_notes_report_where_switches_and_loading_disagree() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    let state = create_test_state().expect("create test state");
+
+    for dir in ["missing", "agents-only", "users-own"] {
+        write_skill(&SkillService::get_ssot_dir().unwrap().join(dir), dir);
+    }
+    // 勾了 Claude，但 ~/.claude/skills 里没有它。
+    state
+        .db
+        .save_skill(&native_test_skill(
+            "local:missing",
+            "missing",
+            SkillApps {
+                claude: true,
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+    // 没勾 Codex，可 ~/.agents/skills 里有它，Codex 又没装（写不了关闭配置）。
+    write_skill(
+        &home.join(".agents").join("skills").join("agents-only"),
+        "agents-only",
+    );
+    state
+        .db
+        .save_skill(&native_test_skill(
+            "local:agents-only",
+            "agents-only",
+            SkillApps::default(),
+        ))
+        .unwrap();
+    // 勾了 Claude，但 ~/.claude/skills 里是用户自己的同名目录。
+    let users_own = home.join(".claude").join("skills").join("users-own");
+    write_skill(&users_own, "users-own");
+    fs::write(users_own.join("mine.md"), "edited by the user").unwrap();
+    state
+        .db
+        .save_skill(&native_test_skill(
+            "local:users-own",
+            "users-own",
+            SkillApps {
+                claude: true,
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+
+    let notes = SkillService::app_notes(&state.db).expect("notes");
+    let has = |id: &str, app: &str, state: &str| {
+        notes
+            .iter()
+            .any(|note| note.id == id && note.app == app && note.state == state)
+    };
+    assert!(has("local:missing", "claude", "notLoaded"), "{notes:?}");
+    assert!(
+        has("local:agents-only", "codex", "stillLoaded"),
+        "{notes:?}"
+    );
+    assert!(
+        has("local:agents-only", "gemini", "stillLoaded"),
+        "{notes:?}"
+    );
+    assert!(has("local:users-own", "claude", "external"), "{notes:?}");
+    // OpenCode 也读 ~/.claude/skills。
+    assert!(
+        has("local:users-own", "opencode", "stillLoaded"),
+        "{notes:?}"
+    );
+
+    // 装了 Codex 之后，关掉就会写进它的配置，提示随之消失。
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    state
+        .db
+        .save_skill(&native_test_skill(
+            "local:agents-only",
+            "agents-only",
+            SkillApps {
+                codex: true,
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+    SkillService::toggle_app(&state.db, "local:agents-only", &AppType::Codex, false).unwrap();
+    let notes = SkillService::app_notes(&state.db).expect("notes");
+    assert!(
+        !notes
+            .iter()
+            .any(|note| note.id == "local:agents-only" && note.app == "codex"),
+        "{notes:?}"
+    );
+    clean_native_roots(home);
+}

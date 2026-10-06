@@ -4442,7 +4442,8 @@
       "noUpdatesInSelection": "选中的 Skill 没有可用的更新",
       "selectionAlreadyOn": "选中的 {{count}} 个 Skill 已经在 {{app}} 启用",
       "selectionAlreadyOff": "选中的 {{count}} 个 Skill 都没有在 {{app}} 启用",
-      "disabledSelection": "已在 {{app}} 停用 {{count}} 个 {{noun}}"
+      "disabledSelection": "已在 {{app}} 停用 {{count}} 个 {{noun}}",
+      "restartToApply": "已写入 {{app}} 的配置，重启 {{app}} 后生效。"
     },
     "installTo": {
       "prefix": "安装到：",
@@ -4524,7 +4525,12 @@
     "headerUpdates": "{{count}} 个可更新",
     "headerUpdatesShow": "只看可更新的 Skill",
     "headerUpdatesClear": "显示全部 Skill",
-    "updateAllCount": "全部更新（{{count}} 个）"
+    "updateAllCount": "全部更新（{{count}} 个）",
+    "cellNote": {
+      "notLoaded": "已勾选，但 {{app}} 实际读不到它：文件不在它读取的目录里，或被它自己的配置关掉了。",
+      "stillLoaded": "未勾选，但 {{app}} 仍会加载它：它读取的目录里有这个 Skill，而 CC Switch 没法在它的配置里关掉（应用没装，或它没有按 Skill 关闭的设置）。",
+      "external": "{{app}} 读到的是你自己放的同名目录，不是 CC Switch 管理的这一份。"
+    }
   },
   "newLayoutNotice": {
     "title": "界面改版了",

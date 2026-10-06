@@ -43,13 +43,14 @@ import {
   useSkillBackups,
   useSkillRepos,
   useToggleSkillApp,
+  useSkillAppNotes,
   useUninstallSkill,
   useUpdateSkill,
 } from "@/hooks/useSkills";
 import type { AppId } from "@/lib/api/types";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { settingsApi, skillsApi } from "@/lib/api";
-import type { UnmanagedSkill } from "@/lib/api/skills";
+import type { SkillAppNote, UnmanagedSkill } from "@/lib/api/skills";
 import { copyText } from "@/lib/clipboard";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { cn } from "@/lib/utils";
@@ -167,6 +168,17 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     error: loadError,
     refetch,
   } = useInstalledSkills();
+  const { data: appNoteList } = useSkillAppNotes();
+  // 开关和应用实际加载情况对不上的格子：key 同 failKey
+  const appNotes = useMemo(() => {
+    const map: Record<string, SkillAppNote["state"]> = {};
+    for (const note of appNoteList ?? []) {
+      map[failKey(note.id, note.app)] = note.state;
+    }
+    return map;
+  }, [appNoteList]);
+  // 改了这些应用的配置要重启它才生效：每次打开只提醒一次
+  const restartHintedRef = useRef(new Set<AppId>());
   const {
     data: skillBackups = [],
     refetch: refetchSkillBackups,
@@ -416,11 +428,23 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     }
   };
 
+  // Codex、Gemini CLI 启动时读一次 Skills 配置：开关写进去之后要重启它们才生效。
+  const hintRestart = (app: AppId) => {
+    if (app !== "codex" && app !== "gemini") return;
+    if (restartHintedRef.current.has(app)) return;
+    restartHintedRef.current.add(app);
+    toast.info(
+      t("skillsPage.toast.restartToApply", { app: APP_DISPLAY_NAME[app] }),
+      { closeButton: true },
+    );
+  };
+
   const writeOne = async (id: string, app: AppId, enabled: boolean) => {
     if (!beginWrite()) return;
     try {
       await toggleAppMutation.mutateAsync({ id, app, enabled });
       recordResult(id, app, enabled);
+      hintRestart(app);
     } catch (error) {
       recordResult(id, app, enabled, error);
     } finally {
@@ -437,6 +461,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
         enabled,
       });
       for (const id of result.succeeded) recordResult(id, app, enabled);
+      if (result.succeeded.length > 0) hintRestart(app);
       for (const failure of result.failed) {
         recordResult(failure.item, app, enabled, failure.error);
       }
@@ -1383,6 +1408,7 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
                     }
                     highlighted={highlightId === skill.id}
                     fails={fails}
+                    notes={appNotes}
                     disabled={controlsDisabled}
                     sourceText={
                       skill.repoOwner && skill.repoName
@@ -1706,6 +1732,7 @@ interface InstalledRowProps {
   isUpdating: boolean;
   highlighted: boolean;
   fails: Record<string, WriteFailure>;
+  notes: Record<string, SkillAppNote["state"]>;
   disabled: boolean;
   sourceText: string;
   onPick: (checked: boolean) => void;
@@ -1727,6 +1754,7 @@ function InstalledRow({
   isUpdating,
   highlighted,
   fails,
+  notes,
   disabled,
   sourceText,
   onPick,
@@ -1842,11 +1870,19 @@ function InstalledRow({
           const fail = fails[failKey(skill.id, app)];
           const on = Boolean(skill.apps[app]);
           const state = fail ? "fail" : on ? "on" : "off";
+          const note = fail ? undefined : notes[failKey(skill.id, app)];
           return (
             <MatrixCell
               key={app}
               app={app}
               state={state}
+              note={
+                note
+                  ? t(`skillsPage.cellNote.${note}`, {
+                      app: APP_DISPLAY_NAME[app],
+                    })
+                  : undefined
+              }
               disabled={disabled}
               label={t(`appMatrix.cell.${state}`, {
                 name: skill.name,
