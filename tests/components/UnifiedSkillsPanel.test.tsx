@@ -246,6 +246,23 @@ describe("UnifiedSkillsPanel", () => {
     );
   });
 
+  it("switches a leftover off instead of on when the cell is clicked", async () => {
+    m.installed = [makeSkill({ apps: { claude: true } })];
+    m.notes = [
+      { id: "owner/repo:alpha-skill", app: "codex", state: "notDisabled" },
+    ];
+    renderPanel();
+    const cells = screen.getAllByRole("button", { name: /appMatrix.cell/ });
+    await userEvent.click(cells[1]);
+    await waitFor(() =>
+      expect(m.toggle).toHaveBeenCalledWith({
+        id: "owner/repo:alpha-skill",
+        app: "codex",
+        enabled: false,
+      }),
+    );
+  });
+
   it("reminds once that Codex needs a restart after its config changed", async () => {
     m.installed = [makeSkill({ apps: { claude: true, codex: true } })];
     renderPanel();

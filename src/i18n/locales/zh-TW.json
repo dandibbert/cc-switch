@@ -4530,8 +4530,9 @@
     "updateAllCount": "全部更新（{{count}} 個）",
     "cellNote": {
       "notLoaded": "已勾選，但 {{app}} 實際讀不到它：檔案不在它讀取的目錄裡，或被它自己的設定關掉了。",
-      "stillLoaded": "未勾選，但 {{app}} 仍會載入它：它讀取的目錄裡有這個 Skill，而 CC Switch 沒辦法在它的設定裡關掉（應用沒安裝，或它沒有按 Skill 關閉的設定）。",
-      "external": "{{app}} 讀到的是你自己放的同名目錄，不是 CC Switch 管理的這一份。"
+      "stillLoaded": "未勾選，但 {{app}} 仍會載入它，CC Switch 這邊關不掉：可能是 {{app}} 沒安裝（沒有設定檔可寫）、{{app}} 不支援按 Skill 關閉，或它載入的是你自己放的同名目錄。",
+      "external": "{{app}} 讀到的是你自己放的同名目錄，不是 CC Switch 管理的這一份。",
+      "notDisabled": "未勾選，但 {{app}} 仍會載入它：{{app}} 也會讀 ~/.agents/skills 等目錄，而它的設定裡還沒有關掉這個 Skill（多半是舊版本留下的）。點一下這個格子就會在 {{app}} 的設定裡關掉；「立即重新同步」會一次補齊所有這類遺留。"
     },
     "plugins": {
       "title": "Claude Code 外掛",

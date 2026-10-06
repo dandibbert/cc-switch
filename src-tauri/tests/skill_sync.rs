@@ -1036,3 +1036,48 @@ fn app_notes_report_where_switches_and_loading_disagree() {
     );
     clean_native_roots(home);
 }
+
+/// 旧版本取消勾选只是不投影：~/.agents/skills 里的 Skill Codex 照样加载。装了 Codex 时提示
+/// 「能关」，「立即重新同步」把关闭项补进 Codex 的配置。
+#[test]
+fn resync_disables_leftovers_an_app_still_loads() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    let state = create_test_state().expect("create test state");
+    write_skill(
+        &SkillService::get_ssot_dir().unwrap().join("legacy"),
+        "legacy",
+    );
+    write_skill(
+        &home.join(".agents").join("skills").join("legacy"),
+        "legacy",
+    );
+    state
+        .db
+        .save_skill(&native_test_skill(
+            "local:legacy",
+            "legacy",
+            SkillApps::default(),
+        ))
+        .unwrap();
+
+    let codex_note = |state: &cc_switch_lib::AppState| {
+        SkillService::app_notes(&state.db)
+            .unwrap()
+            .into_iter()
+            .find(|note| note.id == "local:legacy" && note.app == "codex")
+            .map(|note| note.state)
+    };
+    assert_eq!(codex_note(&state).as_deref(), Some("notDisabled"));
+
+    let outcomes = SkillService::resync_all_apps(&state.db);
+    assert!(outcomes.iter().all(|outcome| outcome.ok), "{outcomes:?}");
+    assert!(fs::read_to_string(cc_switch_lib::get_codex_config_path())
+        .unwrap()
+        .contains("name = \"legacy\"\nenabled = false"));
+    assert_eq!(codex_note(&state), None);
+    clean_native_roots(home);
+}

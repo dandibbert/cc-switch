@@ -1430,10 +1430,17 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
                     }
                     onCell={(app) => {
                       const failure = fails[failKey(skill.id, app)];
+                      // 没勾却仍被加载、又能关掉的：点一下是「在它的配置里关掉」，不是打开
+                      const leftover =
+                        appNotes[failKey(skill.id, app)] === "notDisabled";
                       void writeOne(
                         skill.id,
                         app,
-                        failure ? failure.desired : !skill.apps[app],
+                        failure
+                          ? failure.desired
+                          : leftover
+                            ? false
+                            : !skill.apps[app],
                       );
                     }}
                     onOpenSource={() => void openDocs(skill)}

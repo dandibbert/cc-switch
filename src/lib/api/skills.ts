@@ -102,8 +102,11 @@ export interface ClaudePlugin {
 export interface SkillAppNote {
   id: string;
   app: AppId;
-  /** notLoaded：勾了却读不到；stillLoaded：没勾仍会加载；external：读到的是用户自己的同名目录 */
-  state: "notLoaded" | "stillLoaded" | "external";
+  /**
+   * notLoaded：勾了却读不到；notDisabled：没勾仍会加载，点格子能在它的配置里关掉；
+   * stillLoaded：没勾仍会加载、CC Switch 关不掉；external：读到的是用户自己的同名目录
+   */
+  state: "notLoaded" | "notDisabled" | "stillLoaded" | "external";
 }
 
 /** 导入已有 Skill 时提交的应用启用状态 */

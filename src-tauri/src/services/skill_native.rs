@@ -55,6 +55,19 @@ pub(crate) fn supports(app: &AppType) -> bool {
     )
 }
 
+/// CC Switch 现在能不能在 `app` 的原生配置里关 Skill：应用支持，且它的配置目录在
+/// （没装的应用没有地方可写）。
+pub(crate) fn can_write(app: &AppType) -> bool {
+    supports(app)
+        && Target::resolve(app).ok().flatten().is_some_and(|target| {
+            target
+                .file
+                .path
+                .parent()
+                .is_some_and(|parent| parent.exists())
+        })
+}
+
 /// 在 `app` 的原生配置里关闭（`disabled = true`）或取消关闭这个 Skill。
 ///
 /// 应用的配置目录不存在（没装这个应用）时什么都不写；取消关闭时配置文件不存在也不创建。

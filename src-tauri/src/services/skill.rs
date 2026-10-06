@@ -428,7 +428,9 @@ pub struct SkillAppNote {
     pub id: String,
     pub app: String,
     /// `notLoaded`：勾了，应用却读不到（文件不在它读的目录里，或被它自己的配置关掉了）；
-    /// `stillLoaded`：没勾，应用仍会加载（它读的目录里有，又没有按 Skill 关闭的配置）；
+    /// `notDisabled`：没勾，应用仍会加载，但 CC Switch 能在它的配置里关掉（点格子或重新同步）；
+    /// `stillLoaded`：没勾，应用仍会加载，CC Switch 也关不掉（应用没装、不支持按 Skill 关闭，
+    /// 或加载的是用户自己放的同名目录）；
     /// `external`：应用读到的是用户自己放的同名目录，不是 CC Switch 管理的这份。
     pub state: String,
 }
@@ -886,6 +888,14 @@ impl SkillService {
                     "external"
                 } else if desired && !loaded {
                     "notLoaded"
+                } else if !desired
+                    && loaded
+                    && !external
+                    && crate::services::skill_native::can_write(&app)
+                {
+                    // 没勾、应用还在加载，但能在它的配置里关掉（多半是旧版本留下的：那时没勾
+                    // 只是不投影，没写关闭项）。点格子或「立即重新同步」就能补上。
+                    "notDisabled"
                 } else if !desired && loaded {
                     "stillLoaded"
                 } else {
@@ -3285,13 +3295,14 @@ impl SkillService {
         AppType::all()
             .filter(Self::is_sync_managed_app)
             .map(|app| {
-                let (error, failed_skills) = match Self::sync_to_app_unlocked(db, &app) {
+                let (error, mut failed_skills) = match Self::sync_to_app_unlocked(db, &app) {
                     Ok(failed) => (None, failed),
                     Err(err) => {
                         log::warn!("重新同步 Skill 到 {app:?} 失败: {err:#}");
                         (Some(format!("{err:#}")), Vec::new())
                     }
                 };
+                failed_skills.extend(Self::disable_visible_leftovers(db, &app));
                 SkillAppSyncOutcome {
                     app: app.as_str().to_string(),
                     ok: error.is_none() && failed_skills.is_empty(),
@@ -3300,6 +3311,55 @@ impl SkillService {
                 }
             })
             .collect()
+    }
+
+    /// 没给 `app` 打开、它却仍会从自己读的目录里加载的 Skill：在它的原生配置里补上关闭项。
+    /// 旧版本取消勾选只是不投影，`~/.agents/skills` 这类目录里的同名 Skill 照样被加载。
+    /// 用户自己放的同名目录（不是 CC Switch 的投影）不动。
+    fn disable_visible_leftovers(db: &Arc<Database>, app: &AppType) -> Vec<SkillSyncFailure> {
+        use crate::services::skill_native;
+
+        let mut failed = Vec::new();
+        if !skill_native::can_write(app) {
+            return failed;
+        }
+        let (Ok(skills), Ok(ssot_dir)) = (db.get_all_installed_skills(), Self::get_ssot_dir())
+        else {
+            return failed;
+        };
+        let roots = Self::app_read_roots(app);
+        let own_dir = Self::get_app_skills_dir(app).ok();
+        for skill in skills.values() {
+            let Ok(directory) = Self::require_valid_directory(&skill.directory) else {
+                continue;
+            };
+            if skill.apps.is_enabled_for(app)
+                || !roots.iter().any(|root| root.join(&directory).is_dir())
+            {
+                continue;
+            }
+            let users_own = own_dir.as_ref().is_some_and(|dir| {
+                let own = dir.join(&directory);
+                (own.exists() || Self::is_symlink(&own))
+                    && Self::inspect_pi_skill_destination(
+                        &ssot_dir.join(&directory),
+                        &own,
+                        &directory,
+                    )
+                    .is_err()
+            });
+            let native = Self::native_skill(skill);
+            if users_own || skill_native::is_disabled(app, &native) {
+                continue;
+            }
+            if let Err(err) = skill_native::set_disabled(app, &native, true) {
+                failed.push(SkillSyncFailure {
+                    directory: skill.directory.clone(),
+                    error: format!("{err:#}"),
+                });
+            }
+        }
+        failed
     }
 
     /// Caller must hold either the Skills state read or write guard.

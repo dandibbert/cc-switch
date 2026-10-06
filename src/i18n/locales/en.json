@@ -4529,8 +4529,9 @@
     "updateAllCount": "Update all ({{count}})",
     "cellNote": {
       "notLoaded": "Ticked, but {{app}} can't actually load it: the files aren't in a folder it reads, or its own config turns it off.",
-      "stillLoaded": "Not ticked, but {{app}} still loads it: the Skill is in a folder it reads, and CC Switch can't switch it off in its config (the app isn't installed, or it has no per-Skill setting).",
-      "external": "{{app}} loads a same-name folder you placed yourself, not the copy CC Switch manages."
+      "stillLoaded": "Not ticked, but {{app}} still loads it and CC Switch can't switch it off: {{app}} may not be installed (no config to write), may have no per-Skill setting, or is loading a same-name folder you placed yourself.",
+      "external": "{{app}} loads a same-name folder you placed yourself, not the copy CC Switch manages.",
+      "notDisabled": "Not ticked, but {{app}} still loads it: {{app}} also reads folders such as ~/.agents/skills, and its config doesn't switch this Skill off yet (likely left over from an older version). Click this cell to switch it off in {{app}}'s config; “Resync now” fixes every such leftover at once."
     },
     "plugins": {
       "title": "Claude Code plugins",
