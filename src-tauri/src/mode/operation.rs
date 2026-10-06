@@ -380,6 +380,43 @@ impl<'a> AppWrite<'a> {
     }
 }
 
+/// 只改客户端文件、不落定任何状态的写入（MCP 同步、Skills 的原生开关）。
+///
+/// 和切换、编辑器共用这个应用的写锁和发布流程（重读比对 hash，被改过就以新内容为底
+/// 重算），所以彼此不会覆盖对方刚写进去的键。它不碰数据库：上一次没做完的操作要落定
+/// 指针或模式时不代为补完，直接报错，留给下次切换或启动按完整流程补完。
+pub fn run_files_only(
+    app: &str,
+    op: &str,
+    changes: &[FileChange<'_>],
+) -> Result<OperationReport, AppError> {
+    run_files_only_in(&DeviceStore::for_device(), app, op, changes)
+}
+
+fn run_files_only_in(
+    store: &DeviceStore,
+    app: &str,
+    op: &str,
+    changes: &[FileChange<'_>],
+) -> Result<OperationReport, AppError> {
+    let guard = crate::live::engine::lock_app(app);
+    if state::pending(store, app)?.is_some_and(|pending| !pending.target.is_empty()) {
+        return Err(AppError::localized(
+            "live.pending_needs_settle",
+            "上一次切换还没收尾，这次什么都没改。请先在 CC Switch 里重新切换一次当前供应商，或重启 CC Switch 后再试",
+            "The previous switch has not finished settling, so nothing was changed. Switch to the current provider again in CC Switch, or restart CC Switch, then retry",
+        ));
+    }
+    run(
+        store,
+        &guard,
+        op,
+        changes,
+        PendingTarget::default(),
+        &|_| Ok(()),
+    )
+}
+
 /// 启动时补完所有应用未完成的操作。
 pub fn recover_all(
     store: &DeviceStore,
@@ -747,6 +784,46 @@ mod tests {
             assert_eq!(*pointer.borrow(), Some("B".into()), "{crash}");
             assert!(fx.temp_files().is_empty(), "{crash}");
         }
+    }
+
+    #[test]
+    fn files_only_writes_refuse_to_settle_someone_elses_switch() {
+        let fx = Fixture::new();
+        let pointer = RefCell::new(None);
+        failpoint::crash_at(Some("published:0"));
+        switch(&fx, &pointer).expect_err("crash mid-switch");
+        let half_done = fx.read(&fx.a);
+
+        let patch = JsonPatch {
+            set: vec![(KeyPath::new(&["mcp"]), json!(true))],
+            ..JsonPatch::default()
+        };
+        let change = [FileChange {
+            file: LiveFile::shared(&fx.a),
+            patch: &patch,
+        }];
+        let err = run_files_only_in(&fx.store, &fx.app, state::op::MCP, &change)
+            .expect_err("a switch that still has to move the pointer is left for the full flow");
+        assert!(
+            matches!(
+                err,
+                AppError::Localized {
+                    key: "live.pending_needs_settle",
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert_eq!(fx.read(&fx.a), half_done, "nothing written");
+
+        // 完整流程补完之后，同样的写入照常进行。
+        assert_eq!(
+            recover_now(&fx, &pointer),
+            Some(RecoveryOutcome::RolledForward)
+        );
+        run_files_only_in(&fx.store, &fx.app, state::op::MCP, &change).unwrap();
+        assert_eq!(fx.read(&fx.a)["mcp"], json!(true));
+        assert_eq!(fx.read(&fx.a)["key"], json!("new"));
     }
 
     #[test]

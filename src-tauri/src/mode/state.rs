@@ -218,6 +218,10 @@ pub mod op {
     pub const STACK: &str = "stack";
     /// Codex 改用 CC Switch 生成的模型目录（用户在 Stack 提示上点的）：一律重写客户端。
     pub const CATALOG: &str = "catalog";
+    /// 同步 MCP 服务器：只改客户端文件里的 MCP 段，不动指针和模式。
+    pub const MCP: &str = "mcp";
+    /// Skills 的原生开关：只改客户端配置里关闭某个 Skill 的那几条，不动指针和模式。
+    pub const SKILLS: &str = "skills";
 }
 
 /// 一次操作的写前意图。

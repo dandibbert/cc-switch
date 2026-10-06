@@ -205,6 +205,17 @@ fn sync_enabled_to_codex_returns_error_on_invalid_toml() {
                 "error message should mention config.toml"
             );
         }
+        // 经写入引擎解析失败：什么都不写，错误里带着 config.toml 的路径和行列。
+        cc_switch_lib::AppError::Localized {
+            key: "live.parse_error",
+            zh,
+            ..
+        } => {
+            assert!(
+                zh.contains("config.toml"),
+                "error message should mention config.toml"
+            );
+        }
         other => panic!("unexpected error: {other:?}"),
     }
 }
@@ -232,6 +243,17 @@ fn sync_single_server_to_codex_fails_closed_on_invalid_toml() {
         cc_switch_lib::AppError::McpValidation(msg) => {
             assert!(
                 msg.contains("config.toml"),
+                "error message should mention config.toml"
+            );
+        }
+        // 经写入引擎解析失败：什么都不写，错误里带着 config.toml 的路径和行列。
+        cc_switch_lib::AppError::Localized {
+            key: "live.parse_error",
+            zh,
+            ..
+        } => {
+            assert!(
+                zh.contains("config.toml"),
                 "error message should mention config.toml"
             );
         }
