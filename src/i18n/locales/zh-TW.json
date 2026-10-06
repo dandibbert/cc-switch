@@ -4363,7 +4363,8 @@
     "addMenu": {
       "discover": "在探索裡瀏覽",
       "zip": "從 ZIP 安裝",
-      "import": "匯入本機已有"
+      "import": "匯入本機已有",
+      "importProject": "掃描專案裡的 Skill…"
     },
     "moreMenu": {
       "restore": "從備份還原",
@@ -4505,7 +4506,12 @@
       "appsTitle": "匯入後在這些應用裡啟用",
       "appsHelpTitle": "預設勾選哪些應用",
       "appsHelp": "預設勾選「發現於」裡的應用，只在發現它的應用裡啟用；另外勾選的應用，所有匯入的 Skill 都會啟用。Pi 按目錄判斷，不在這裡選。",
-      "submit": "匯入 {{count}} 個"
+      "submit": "匯入 {{count}} 個",
+      "projectTitle": "匯入專案裡的 Skill",
+      "projectLead": "匯入會複製一份到 CC Switch 的目錄，變成所有專案都能用的個人 Skill；專案裡的檔案不動。",
+      "foundProject": "專案 {{dir}}",
+      "conflict": "有多個不同版本，只能匯入其中一個",
+      "noProjectSkills": "這個目錄裡沒有找到 Skill（查找了 .claude/skills、.agents/skills、.pi/skills、.gemini/skills、.opencode/skills）。"
     },
     "restore": {
       "lead": "選一個備份，把檔案還原到本機並重新加入列表，並在 {{apps}} 啟用（「探索」裡的「安裝到」決定）。"

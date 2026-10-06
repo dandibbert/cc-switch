@@ -4362,7 +4362,8 @@
     "addMenu": {
       "discover": "在发现里浏览",
       "zip": "从 ZIP 安装",
-      "import": "导入本机已有"
+      "import": "导入本机已有",
+      "importProject": "扫描项目里的 Skill…"
     },
     "moreMenu": {
       "restore": "从备份恢复",
@@ -4504,7 +4505,12 @@
       "appsTitle": "导入后在这些应用里启用",
       "appsHelpTitle": "默认勾选哪些应用",
       "appsHelp": "默认勾选「发现于」里的应用，只在发现它的应用里启用；另外勾选的应用，所有导入的 Skill 都会启用。Pi 按目录判断，不在这里选。",
-      "submit": "导入 {{count}} 个"
+      "submit": "导入 {{count}} 个",
+      "projectTitle": "导入项目里的 Skill",
+      "projectLead": "导入会复制一份到 CC Switch 的目录，变成所有项目都能用的个人 Skill；项目里的文件不动。",
+      "foundProject": "项目 {{dir}}",
+      "conflict": "有多个不同版本，只能导入其中一个",
+      "noProjectSkills": "这个目录里没有找到 Skill（查找了 .claude/skills、.agents/skills、.pi/skills、.gemini/skills、.opencode/skills）。"
     },
     "restore": {
       "lead": "选一个备份，把文件恢复到本地并重新加入列表，并在 {{apps}} 启用（「发现」里的「安装到」决定）。"

@@ -43,7 +43,9 @@ mod tray;
 mod usage_events;
 mod usage_script;
 
-pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use app_config::{
+    AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps, UnmanagedSkill,
+};
 pub use codex_config::{
     extract_codex_experimental_bearer_token, get_codex_auth_path, get_codex_config_path,
     read_codex_live_settings, write_codex_live_atomic,
@@ -1559,6 +1561,8 @@ pub fn run() {
             commands::restore_skill_backup,
             commands::toggle_skill_app,
             commands::scan_unmanaged_skills,
+            commands::scan_project_skills,
+            commands::open_skill_project_dialog,
             commands::import_skills_from_apps,
             commands::discover_available_skills,
             commands::check_skill_updates,

@@ -16,6 +16,8 @@ const IMPORT_APP_IDS = SKILLS_APP_IDS.filter((app) => app !== "pi");
 
 interface SkillImportDialogProps {
   skills: UnmanagedSkill[];
+  /** 来自项目扫描：换标题和说明（导入即提升为个人 Skill） */
+  fromProject?: boolean;
   visibleAppIds: AppId[];
   isImporting: boolean;
   onImport: (imports: ImportSkillSelection[]) => void;
@@ -28,6 +30,7 @@ const isAppId = (value: string): value is AppId =>
 /** 「导入本机已有…」（宽 560）：选目录 + 选导入后在哪些应用启用。 */
 export function SkillImportDialog({
   skills,
+  fromProject = false,
   visibleAppIds,
   isImporting,
   onImport,
@@ -35,8 +38,16 @@ export function SkillImportDialog({
 }: SkillImportDialogProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  // 按路径选：同一个目录名可能有几个版本。有冲突的默认不勾，让用户挑。
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(skills.map((skill) => skill.directory)),
+    () =>
+      new Set(
+        skills.filter((skill) => !skill.conflict).map((skill) => skill.path),
+      ),
+  );
+  const directoryOf = useMemo(
+    () => new Map(skills.map((skill) => [skill.path, skill.directory])),
+    [skills],
   );
   const appChoices = IMPORT_APP_IDS.filter((app) =>
     visibleAppIds.includes(app),
@@ -57,6 +68,10 @@ export function SkillImportDialog({
     if (isAppId(found)) return APP_DISPLAY_NAME[found];
     if (found === "agents") return "~/.agents/skills";
     if (found === "cc-switch") return t("skillsPage.import.foundCcSwitch");
+    if (found.startsWith("project:"))
+      return t("skillsPage.import.foundProject", {
+        dir: found.slice("project:".length),
+      });
     return found;
   };
 
@@ -69,20 +84,39 @@ export function SkillImportDialog({
       ),
   );
 
-  const toggle = (directory: string, checked: boolean) =>
+  // 同一个目录名只能导入一个版本：勾上一个就取消同名的其他版本。
+  const toggle = (path: string, checked: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (checked) next.add(directory);
-      else next.delete(directory);
+      if (checked) {
+        const directory = directoryOf.get(path);
+        for (const other of prev) {
+          if (other !== path && directoryOf.get(other) === directory) {
+            next.delete(other);
+          }
+        }
+        next.add(path);
+      } else next.delete(path);
       return next;
     });
+
+  const selectAll = () => {
+    const next = new Set<string>();
+    const taken = new Set<string>();
+    for (const skill of skills) {
+      if (skill.conflict || taken.has(skill.directory)) continue;
+      taken.add(skill.directory);
+      next.add(skill.path);
+    }
+    setSelected(next);
+  };
 
   const submit = () => {
     // 默认勾的应用只给在那里发现过的 Skill；另外勾的应用给全部
     const extra = [...apps].filter((app) => !defaultApps.has(app));
     onImport(
       skills
-        .filter((skill) => selected.has(skill.directory))
+        .filter((skill) => selected.has(skill.path))
         .map((skill) => {
           const chosen = new Set<AppId>(extra);
           for (const found of skill.foundIn) {
@@ -90,6 +124,7 @@ export function SkillImportDialog({
           }
           return {
             directory: skill.directory,
+            sourcePath: skill.path,
             apps: {
               claude: chosen.has("claude"),
               codex: chosen.has("codex"),
@@ -117,14 +152,22 @@ export function SkillImportDialog({
       <div className="flex shrink-0 flex-col gap-1">
         <div className="flex items-center gap-0.5">
           <DialogTitle className="text-section">
-            {t("skillsPage.import.title")}
+            {t(
+              fromProject
+                ? "skillsPage.import.projectTitle"
+                : "skillsPage.import.title",
+            )}
           </DialogTitle>
           <HelpTip title={t("skillsPage.import.helpTitle")}>
             {t("skillsPage.import.help")}
           </HelpTip>
         </div>
         <DialogDescription className="text-caption text-fg-2">
-          {t("skillsPage.import.lead")}
+          {t(
+            fromProject
+              ? "skillsPage.import.projectLead"
+              : "skillsPage.import.lead",
+          )}
         </DialogDescription>
       </div>
 
@@ -140,9 +183,7 @@ export function SkillImportDialog({
           type="button"
           variant="quiet"
           size="compact"
-          onClick={() =>
-            setSelected(new Set(skills.map((skill) => skill.directory)))
-          }
+          onClick={selectAll}
         >
           {t("skillsPage.import.selectAll")}
         </Button>
@@ -163,7 +204,7 @@ export function SkillImportDialog({
             skill.directory.toLowerCase() !== skill.name.toLowerCase();
           return (
             <li
-              key={skill.directory}
+              key={skill.path}
               className={cn(
                 "flex items-center gap-2.5 py-2 pe-3 ps-3.5",
                 index > 0 && "border-t border-border",
@@ -173,10 +214,8 @@ export function SkillImportDialog({
                 id={id}
                 type="checkbox"
                 className={CHECKBOX_CLASS}
-                checked={selected.has(skill.directory)}
-                onChange={(event) =>
-                  toggle(skill.directory, event.target.checked)
-                }
+                checked={selected.has(skill.path)}
+                onChange={(event) => toggle(skill.path, event.target.checked)}
               />
               <label htmlFor={id} className="flex min-w-0 flex-1 flex-col">
                 <span className="flex min-w-0 items-center gap-1.5">
@@ -186,6 +225,11 @@ export function SkillImportDialog({
                   {showDir && (
                     <span className="truncate font-mono text-caption text-fg-3">
                       {skill.directory}
+                    </span>
+                  )}
+                  {skill.conflict && (
+                    <span className="shrink-0 text-caption text-warning-text">
+                      {t("skillsPage.import.conflict")}
                     </span>
                   )}
                 </span>

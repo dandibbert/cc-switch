@@ -56,6 +56,7 @@ fn import_from_apps_respects_explicit_app_selection() {
                 opencode: true,
                 ..Default::default()
             },
+            source_path: None,
         }],
     )
     .expect("import skills");
@@ -96,6 +97,7 @@ fn import_from_apps_does_not_rewrite_selected_app_directory() {
                 codex: true,
                 ..Default::default()
             },
+            source_path: None,
         }],
     )
     .expect("import skills");
@@ -730,4 +732,208 @@ fn uninstall_clears_native_disable_rules() {
         .unwrap()
         .contains("demo"));
     assert!(!fs::read_to_string(&settings_path).unwrap().contains("demo"));
+}
+
+fn select(skill: &cc_switch_lib::UnmanagedSkill, apps: SkillApps) -> ImportSkillSelection {
+    ImportSkillSelection {
+        directory: skill.directory.clone(),
+        apps,
+        source_path: Some(skill.path.clone()),
+    }
+}
+
+/// 嵌套仓库（skills/<repo>/<skill>/SKILL.md）拆成每个 Skill 一条；Claude Code 只认一层，
+/// 导入后在 ~/.claude/skills 下投影出能用的那一层。账号同步的 synced/ 不列。
+#[test]
+fn scan_splits_nested_repositories_and_skips_synced() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    let claude_skills = home.join(".claude").join("skills");
+    write_skill(&claude_skills.join("my-repo").join("alpha"), "alpha");
+    write_skill(
+        &claude_skills.join("my-repo").join("group").join("beta"),
+        "beta",
+    );
+    write_skill(
+        &claude_skills.join("synced").join("account-skill"),
+        "account",
+    );
+
+    let state = create_test_state().expect("create test state");
+    let found = SkillService::scan_unmanaged(&state.db).expect("scan");
+    let mut names: Vec<&str> = found.iter().map(|s| s.directory.as_str()).collect();
+    names.sort();
+    assert_eq!(names, vec!["alpha", "beta"]);
+
+    let beta = found.iter().find(|s| s.directory == "beta").unwrap();
+    SkillService::import_from_apps(
+        &state.db,
+        vec![select(
+            beta,
+            SkillApps {
+                claude: true,
+                ..Default::default()
+            },
+        )],
+    )
+    .expect("import nested skill");
+    assert!(SkillService::get_ssot_dir()
+        .unwrap()
+        .join("beta")
+        .join("SKILL.md")
+        .exists());
+    assert!(
+        claude_skills.join("beta").join("SKILL.md").exists(),
+        "Claude Code only loads one level, so the skill is projected there"
+    );
+}
+
+/// 同名同内容合成一条，记全出处；同名不同内容各列一条并标冲突，导入用户挑的那份。
+#[test]
+fn scan_dedupes_by_name_and_content_and_imports_the_chosen_version() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    write_skill(&home.join(".claude").join("skills").join("same"), "same");
+    write_skill(&home.join(".agents").join("skills").join("same"), "same");
+    write_skill(
+        &home.join(".claude").join("skills").join("forked"),
+        "forked",
+    );
+    let agents_forked = home.join(".agents").join("skills").join("forked");
+    write_skill(&agents_forked, "forked");
+    fs::write(agents_forked.join("notes.md"), "agents edition").unwrap();
+
+    let state = create_test_state().expect("create test state");
+    let found = SkillService::scan_unmanaged(&state.db).expect("scan");
+
+    let same: Vec<_> = found.iter().filter(|s| s.directory == "same").collect();
+    assert_eq!(same.len(), 1);
+    assert!(!same[0].conflict);
+    assert!(same[0].found_in.contains(&"claude".to_string()));
+    assert!(same[0].found_in.contains(&"agents".to_string()));
+
+    let forked: Vec<_> = found.iter().filter(|s| s.directory == "forked").collect();
+    assert_eq!(forked.len(), 2);
+    assert!(forked.iter().all(|s| s.conflict));
+    let agents_version = forked
+        .iter()
+        .find(|s| s.found_in == vec!["agents".to_string()])
+        .unwrap();
+    SkillService::import_from_apps(
+        &state.db,
+        vec![select(agents_version, SkillApps::default())],
+    )
+    .expect("import the agents version");
+    assert_eq!(
+        fs::read_to_string(
+            SkillService::get_ssot_dir()
+                .unwrap()
+                .join("forked")
+                .join("notes.md")
+        )
+        .unwrap(),
+        "agents edition"
+    );
+    clean_native_roots(home);
+}
+
+/// CC Switch 目录里残留了没有记录、内容不同的同名目录：用户挑定版本导入时，残留做成备份
+/// （能在「恢复备份」里找回），导入的是用户挑的那份。
+#[test]
+fn importing_a_chosen_version_backs_up_a_stale_ssot_leftover() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    let ssot_leftover = SkillService::get_ssot_dir().unwrap().join("codex-skill");
+    write_skill(&ssot_leftover, "Stale SSOT Skill");
+    let codex_skill_dir = home.join(".codex").join("skills").join("codex-skill");
+    write_skill(&codex_skill_dir, "Live Codex Skill");
+
+    let state = create_test_state().expect("create test state");
+    let found = SkillService::scan_unmanaged(&state.db).expect("scan");
+    let live = found
+        .iter()
+        .find(|s| s.name == "Live Codex Skill")
+        .expect("live version listed");
+    assert!(live.conflict);
+
+    SkillService::import_from_apps(&state.db, vec![select(live, SkillApps::default())])
+        .expect("import the live version");
+    assert!(fs::read_to_string(ssot_leftover.join("SKILL.md"))
+        .unwrap()
+        .contains("Live Codex Skill"));
+    let backups = SkillService::list_backups().expect("list backups");
+    assert!(
+        backups
+            .iter()
+            .any(|backup| backup.skill.name == "Stale SSOT Skill"),
+        "the leftover is restorable"
+    );
+}
+
+/// 项目扫描：列出项目里的 Skills，导入即复制进 CC Switch（项目文件不动）；Skills 目录以外的
+/// 路径不接受。
+#[test]
+fn project_scan_lists_project_skills_and_rejects_foreign_paths() {
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
+    reset_test_fs();
+    let home = ensure_test_home();
+    clean_native_roots(home);
+    let project = tempfile::tempdir().expect("project dir");
+    write_skill(
+        &project
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("proj-skill"),
+        "proj",
+    );
+    write_skill(
+        &project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("shared-proj"),
+        "shared",
+    );
+    let stray = project.path().join("docs").join("stray");
+    write_skill(&stray, "stray");
+
+    let state = create_test_state().expect("create test state");
+    let found = SkillService::scan_project(&state.db, project.path()).expect("scan project");
+    let proj = found
+        .iter()
+        .find(|s| s.directory == "proj-skill")
+        .expect("project skill listed");
+    assert_eq!(proj.found_in, vec!["project:.claude/skills".to_string()]);
+    assert!(found.iter().any(|s| s.directory == "shared-proj"));
+    assert!(!found.iter().any(|s| s.directory == "stray"));
+
+    SkillService::import_from_apps(&state.db, vec![select(proj, SkillApps::default())])
+        .expect("promote project skill");
+    assert!(SkillService::get_ssot_dir()
+        .unwrap()
+        .join("proj-skill")
+        .exists());
+    assert!(project
+        .path()
+        .join(".claude/skills/proj-skill/SKILL.md")
+        .exists());
+
+    let err = SkillService::import_from_apps(
+        &state.db,
+        vec![ImportSkillSelection {
+            directory: "stray".to_string(),
+            apps: SkillApps::default(),
+            source_path: Some(stray.display().to_string()),
+        }],
+    )
+    .expect_err("a path outside any skills directory is refused");
+    assert!(err.to_string().contains("stray"), "{err}");
+    assert!(!SkillService::get_ssot_dir().unwrap().join("stray").exists());
 }

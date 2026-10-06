@@ -4362,7 +4362,8 @@
     "addMenu": {
       "discover": "「見つける」で探す",
       "zip": "ZIP からインストール",
-      "import": "このコンピューターから取り込む"
+      "import": "このコンピューターから取り込む",
+      "importProject": "プロジェクトの Skill をスキャン…"
     },
     "moreMenu": {
       "restore": "バックアップから復元",
@@ -4504,7 +4505,12 @@
       "appsTitle": "取り込み後に有効にするアプリ",
       "appsHelpTitle": "既定でチェックされるアプリ",
       "appsHelp": "「見つかった場所」のアプリは既定でチェックされ、そこで見つかった Skill だけを有効にします。追加でチェックしたアプリでは取り込むすべての Skill を有効にします。Pi はフォルダーで判定するためここにはありません。",
-      "submit": "{{count}} 件を取り込む"
+      "submit": "{{count}} 件を取り込む",
+      "projectTitle": "プロジェクトの Skill をインポート",
+      "projectLead": "CC Switch のフォルダにコピーし、どのプロジェクトでも使える個人 Skill にします。プロジェクトのファイルはそのままです。",
+      "foundProject": "プロジェクト {{dir}}",
+      "conflict": "内容の異なるバージョンが複数あります。1 つだけインポートできます",
+      "noProjectSkills": "このフォルダに Skill は見つかりませんでした（.claude/skills、.agents/skills、.pi/skills、.gemini/skills、.opencode/skills を確認しました）。"
     },
     "restore": {
       "lead": "バックアップを選ぶとファイルを復元してリストに戻し、{{apps}} で有効にします（「見つける」の「インストール先」で決まります）。"

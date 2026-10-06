@@ -4362,7 +4362,8 @@
     "addMenu": {
       "discover": "Browse in Discover",
       "zip": "Install from ZIP",
-      "import": "Import from this computer"
+      "import": "Import from this computer",
+      "importProject": "Scan a project for Skills…"
     },
     "moreMenu": {
       "restore": "Restore from backup",
@@ -4504,7 +4505,12 @@
       "appsTitle": "Enable in these apps after importing",
       "appsHelpTitle": "Which apps are ticked by default",
       "appsHelp": "Apps listed under “Found in” are ticked and only enable the Skills found there; any other app you tick enables every imported Skill. Pi is decided by its folder, so it isn't listed.",
-      "submit": "Import {{count}}"
+      "submit": "Import {{count}}",
+      "projectTitle": "Import Skills from a project",
+      "projectLead": "Importing copies them into CC Switch's folder as personal Skills available in every project; the project's files stay as they are.",
+      "foundProject": "project {{dir}}",
+      "conflict": "Several different versions exist; import only one",
+      "noProjectSkills": "No Skills found in this folder (looked in .claude/skills, .agents/skills, .pi/skills, .gemini/skills and .opencode/skills)."
     },
     "restore": {
       "lead": "Pick a backup to restore its files and add it back to the list, enabled in {{apps}} (set by “Install to” in Discover)."

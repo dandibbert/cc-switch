@@ -415,7 +415,30 @@ pub struct ImportSkillSelection {
     pub directory: String,
     #[serde(default)]
     pub apps: SkillApps,
+    /// 扫描结果里这个版本的完整路径。同一个目录名有多个版本、或来自项目目录时，按它
+    /// 取来源；缺省时按目录名在各应用目录里找第一个。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
 }
+
+/// 导入扫描的最大深度：嵌套仓库（`skills/<repo>/<skill>/SKILL.md`）也能拆出来，又不至于
+/// 把整个 home 扫一遍。
+const IMPORT_SCAN_MAX_DEPTH: usize = 4;
+
+/// 项目里的 Skills 目录（相对项目根）。按各家文档：Claude Code `.claude/skills`、
+/// Codex / Gemini CLI / OpenCode / Pi 共用的 `.agents/skills`、Pi `.pi/skills`、
+/// Gemini CLI `.gemini/skills`、OpenCode `.opencode/skill(s)`。
+const PROJECT_SKILL_ROOTS: &[&str] = &[
+    ".claude/skills",
+    ".agents/skills",
+    ".pi/skills",
+    ".gemini/skills",
+    ".opencode/skills",
+    ".opencode/skill",
+];
+
+/// 扫描结果里项目来源的标签前缀（`project:.claude/skills`）。
+const PROJECT_LABEL_PREFIX: &str = "project:";
 
 #[derive(Debug, Clone, Deserialize)]
 struct LegacySkillMigrationRow {
@@ -2265,66 +2288,233 @@ impl SkillService {
 
     /// 扫描未管理的 Skills
     ///
-    /// 扫描各应用目录，找出未被 CC Switch 管理的 Skills
+    /// 扫描各应用的用户级 skills 目录、`~/.agents/skills` 和 CC Switch 目录，找出未被
+    /// CC Switch 管理的 Skills。
     pub fn scan_unmanaged(db: &Arc<Database>) -> Result<Vec<UnmanagedSkill>> {
         let _state_guard = skill_state_read_guard();
-        let managed_skills = db.get_all_installed_skills()?;
-        let managed_dirs: HashSet<String> = managed_skills
-            .values()
-            .map(|s| s.directory.clone())
-            .collect();
+        Self::scan_sources(db, &Self::user_scan_sources())
+    }
 
-        // 收集所有待扫描的目录及其来源标签
-        let mut scan_sources: Vec<(PathBuf, String)> = Vec::new();
+    /// 扫描一个项目里的 Skills（`.claude/skills`、`.agents/skills` 等），结果和
+    /// [`Self::scan_unmanaged`] 同形，`found_in` 是 `project:<相对目录>`。导入即「提升为
+    /// 用户技能」：复制进 CC Switch 目录，项目里的文件不动。
+    pub fn scan_project(db: &Arc<Database>, project_dir: &Path) -> Result<Vec<UnmanagedSkill>> {
+        let _state_guard = skill_state_read_guard();
+        if !project_dir.is_absolute() || !project_dir.is_dir() {
+            return Err(anyhow!("不是一个目录: {}", project_dir.display()));
+        }
+        let sources: Vec<(PathBuf, String)> = PROJECT_SKILL_ROOTS
+            .iter()
+            .map(|rel| {
+                (
+                    project_dir.join(rel),
+                    format!("{PROJECT_LABEL_PREFIX}{rel}"),
+                )
+            })
+            .collect();
+        Self::scan_sources(db, &sources)
+    }
+
+    /// 用户级的发现根：各应用的 skills 目录、`~/.agents/skills`、CC Switch 目录。
+    fn user_scan_sources() -> Vec<(PathBuf, String)> {
+        let mut sources: Vec<(PathBuf, String)> = Vec::new();
         for app in AppType::all() {
             if let Ok(d) = Self::get_app_skills_dir(&app) {
-                scan_sources.push((d, app.as_str().to_string()));
+                sources.push((d, app.as_str().to_string()));
             }
         }
         if let Some(agents_dir) = get_agents_skills_dir() {
-            scan_sources.push((agents_dir, "agents".to_string()));
+            sources.push((agents_dir, "agents".to_string()));
         }
         if let Ok(ssot_dir) = Self::get_ssot_dir() {
-            scan_sources.push((ssot_dir, "cc-switch".to_string()));
+            sources.push((ssot_dir, "cc-switch".to_string()));
         }
+        sources
+    }
 
-        let mut unmanaged: HashMap<String, UnmanagedSkill> = HashMap::new();
-
-        for (scan_dir, label) in &scan_sources {
-            let entries = match fs::read_dir(scan_dir) {
-                Ok(e) => e,
-                Err(_) => continue,
+    /// 发现根下所有 Skill 目录：含 `SKILL.md` 的目录就是一个 Skill，不再往里走；不含的
+    /// 继续往下找（嵌套仓库），深度封顶。跳过点开头的目录和 Claude Code 账号同步的
+    /// `synced/`（它归 claude.ai 管，删了会被重新拉下）。
+    fn discover_skill_dirs(root: &Path) -> Vec<PathBuf> {
+        fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+            let Ok(entries) = fs::read_dir(dir) else {
+                return;
             };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_dir() {
-                    continue;
+            let mut children: Vec<PathBuf> = entries
+                .flatten()
+                .filter(|entry| {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    let hidden = name.starts_with('.');
+                    let account_synced = depth == 0 && name == "synced";
+                    !hidden && !account_synced
+                })
+                .map(|entry| entry.path())
+                .filter(|path| path.is_dir())
+                .collect();
+            children.sort();
+            for child in children {
+                if child.join("SKILL.md").is_file() {
+                    out.push(child);
+                } else if depth + 1 < IMPORT_SCAN_MAX_DEPTH {
+                    walk(&child, depth + 1, out);
                 }
-                let dir_name = entry.file_name().to_string_lossy().to_string();
-                if dir_name.starts_with('.') || managed_dirs.contains(&dir_name) {
-                    continue;
-                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(root, 0, &mut out);
+        out
+    }
 
-                let skill_md = path.join("SKILL.md");
-                if !skill_md.exists() {
+    /// 按 frontmatter 的 `name` 加内容哈希去重：同一份内容在几个目录里出现时合成一条，
+    /// `found_in` 记全；同一个目录名下内容不同的版本各列一条，标出冲突让用户挑。
+    fn scan_sources(
+        db: &Arc<Database>,
+        sources: &[(PathBuf, String)],
+    ) -> Result<Vec<UnmanagedSkill>> {
+        let managed_dirs: HashSet<String> = db
+            .get_all_installed_skills()?
+            .values()
+            .map(|s| s.directory.clone())
+            .collect();
+        let ssot_dir = Self::get_ssot_dir().ok();
+
+        let mut order: Vec<(String, String)> = Vec::new();
+        let mut found: HashMap<(String, String), UnmanagedSkill> = HashMap::new();
+        for (root, label) in sources {
+            for path in Self::discover_skill_dirs(root) {
+                let Some(dir_name) = path.file_name().map(|n| n.to_string_lossy().to_string())
+                else {
+                    continue;
+                };
+                if managed_dirs.contains(&dir_name)
+                    || Self::require_valid_directory(&dir_name).is_err()
+                {
                     continue;
                 }
-                let (name, description) = Self::read_skill_name_desc(&skill_md, &dir_name);
-
-                unmanaged
-                    .entry(dir_name.clone())
-                    .and_modify(|s| s.found_in.push(label.clone()))
-                    .or_insert(UnmanagedSkill {
-                        directory: dir_name,
-                        name,
-                        description,
-                        found_in: vec![label.clone()],
-                        path: path.display().to_string(),
-                    });
+                let (name, description) =
+                    Self::read_skill_name_desc(&path.join("SKILL.md"), &dir_name);
+                let hash = Self::compute_dir_hash(&path).unwrap_or_default();
+                let key = (name.to_lowercase(), hash);
+                match found.get_mut(&key) {
+                    Some(existing) => {
+                        if !existing.found_in.contains(label) {
+                            existing.found_in.push(label.clone());
+                        }
+                    }
+                    None => {
+                        order.push(key.clone());
+                        found.insert(
+                            key,
+                            UnmanagedSkill {
+                                directory: dir_name,
+                                name,
+                                description,
+                                found_in: vec![label.clone()],
+                                path: path.display().to_string(),
+                                conflict: false,
+                            },
+                        );
+                    }
+                }
             }
         }
 
-        Ok(unmanaged.into_values().collect())
+        let mut skills: Vec<UnmanagedSkill> = order
+            .into_iter()
+            .filter_map(|key| found.remove(&key))
+            .collect();
+        // 冲突：同一个目录名有多个版本，或 CC Switch 目录里已有内容不同的同名目录。
+        let mut per_dir: HashMap<String, usize> = HashMap::new();
+        for skill in &skills {
+            *per_dir.entry(skill.directory.clone()).or_default() += 1;
+        }
+        for skill in &mut skills {
+            let in_ssot = ssot_dir
+                .as_ref()
+                .map(|ssot| ssot.join(&skill.directory))
+                .filter(|dest| dest.is_dir() && Path::new(&skill.path) != dest.as_path());
+            let differs_from_ssot = in_ssot.is_some_and(|dest| {
+                Self::compute_dir_hash(&dest).ok()
+                    != Self::compute_dir_hash(Path::new(&skill.path)).ok()
+            });
+            skill.conflict = per_dir[&skill.directory] > 1 || differs_from_ssot;
+        }
+        Ok(skills)
+    }
+
+    /// 把 CC Switch 目录里没有数据库记录的同名残留做成一份普通的卸载备份（能在「恢复备份」
+    /// 里找回），再从 CC Switch 目录移走，给用户挑定的版本让位。
+    fn set_aside_ssot_leftover(dest: &Path, dir_name: &str) -> Result<()> {
+        let (name, description) = Self::read_skill_name_desc(&dest.join("SKILL.md"), dir_name);
+        let leftover = InstalledSkill {
+            id: format!("local:{dir_name}"),
+            name,
+            description,
+            directory: dir_name.to_string(),
+            repo_owner: None,
+            repo_name: None,
+            repo_branch: None,
+            readme_url: None,
+            apps: SkillApps::default(),
+            installed_at: Utc::now().timestamp(),
+            content_hash: None,
+            updated_at: 0,
+        };
+        let backup = Self::create_uninstall_backup(&leftover)?
+            .ok_or_else(|| anyhow!("没能备份 CC Switch 目录里的同名残留: {}", dest.display()))?;
+        fs::remove_dir_all(dest)?;
+        log::info!(
+            "导入 {dir_name} 时把 CC Switch 目录里内容不同的残留备份到了 {}",
+            backup.display()
+        );
+        Ok(())
+    }
+
+    /// 导入目标（CC Switch 目录里的同名目录）已存在时，内容必须和来源一致才能沿用。
+    fn check_import_destination(source: &Path, dest: &Path) -> Result<()> {
+        if !dest.exists() || source == dest {
+            return Ok(());
+        }
+        if Self::compute_dir_hash(source)? == Self::compute_dir_hash(dest)? {
+            return Ok(());
+        }
+        Err(anyhow!(
+            "CC Switch 目录里已有内容不同的同名 Skill（{}），没有导入",
+            dest.display()
+        ))
+    }
+
+    /// 校验前端提交的来源路径：必须是含 `SKILL.md`、目录名对得上的目录，且位于某个用户级
+    /// 发现根之下，或位于某个项目的 Skills 目录（见 [`PROJECT_SKILL_ROOTS`]）之下。
+    fn resolve_import_source(raw: &str, dir_name: &str) -> Result<PathBuf> {
+        let path = PathBuf::from(raw);
+        if !path.is_absolute()
+            || path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .as_deref()
+                != Some(dir_name)
+            || !path.join("SKILL.md").is_file()
+        {
+            return Err(anyhow!("导入来源不是这个 Skill 的目录: {raw}"));
+        }
+        let canonical = path.canonicalize()?;
+        let under_user_root = Self::user_scan_sources().iter().any(|(root, _)| {
+            root.canonicalize()
+                .is_ok_and(|root| canonical.starts_with(&root) && canonical != root)
+        });
+        let under_project_root = path.ancestors().skip(1).any(|ancestor| {
+            PROJECT_SKILL_ROOTS.iter().any(|rel| {
+                let rel = Path::new(rel);
+                ancestor.ends_with(rel)
+            })
+        });
+        if under_user_root || under_project_root {
+            Ok(path)
+        } else {
+            Err(anyhow!("导入来源不在 Skills 目录里: {raw}"))
+        }
     }
 
     /// 从应用目录导入 Skills
@@ -2340,6 +2530,8 @@ impl SkillService {
         let mut imported = Vec::new();
         let mut skipped_mcode = Vec::new();
         let mut not_enabled = Vec::new();
+        let mut conflicts = Vec::new();
+        let mut explicit_source: Option<PathBuf> = None;
 
         // 将 lock 文件中发现的仓库保存到 skill_repos
         save_repos_from_lock(
@@ -2371,10 +2563,35 @@ impl SkillService {
                     continue;
                 }
             };
+            // 前端提交了扫描到的那个版本：按它取来源（嵌套目录、项目目录、同名多版本都靠它）。
+            if let Some(raw) = selection.source_path.as_deref() {
+                match Self::resolve_import_source(raw, &dir_name) {
+                    Ok(path) => {
+                        // 用户挑定了版本：CC Switch 目录里残留的、内容不同的同名目录（没有
+                        // 数据库记录）先挪进备份区，不拿它充数，也不直接删掉。
+                        let dest = ssot_dir.join(&dir_name);
+                        if Self::check_import_destination(&path, &dest).is_err() {
+                            if let Err(err) = Self::set_aside_ssot_leftover(&dest, &dir_name) {
+                                conflicts.push(format!("{dir_name}: {err:#}"));
+                                continue;
+                            }
+                        }
+                        explicit_source = Some(path);
+                    }
+                    Err(err) => {
+                        conflicts.push(format!("{dir_name}: {err:#}"));
+                        continue;
+                    }
+                }
+            }
+
             // 在所有候选目录中查找
-            let mut source_path: Option<PathBuf> = None;
+            let mut source_path: Option<PathBuf> = explicit_source.take();
 
             for (base, label) in &search_sources {
+                if source_path.is_some() {
+                    break;
+                }
                 let skill_path = base.join(&dir_name);
                 if skill_path.exists() {
                     if source_path.is_none() {
@@ -2397,7 +2614,7 @@ impl SkillService {
                 continue;
             }
 
-            // 复制到 SSOT
+            // 复制到 SSOT（已有同名目录时沿用；用户挑定版本的情况上面已经处理过）
             let dest = ssot_dir.join(&dir_name);
             if !dest.exists() {
                 Self::copy_dir_recursive(&source, &dest)?;
@@ -2514,6 +2731,9 @@ impl SkillService {
         }
         if !not_enabled.is_empty() {
             problems.push(format!("could not enable: {}", not_enabled.join("; ")));
+        }
+        if !conflicts.is_empty() {
+            problems.push(format!("not imported: {}", conflicts.join("; ")));
         }
 
         if problems.is_empty() {
@@ -5591,6 +5811,7 @@ mod tests {
                         claude: true,
                         ..Default::default()
                     },
+                    source_path: None,
                 },
                 ImportSkillSelection {
                     directory: "both".to_string(),
@@ -5601,6 +5822,7 @@ mod tests {
                         opencode: true,
                         ..Default::default()
                     },
+                    source_path: None,
                 },
             ],
         )
@@ -5745,6 +5967,7 @@ mod tests {
                     mcode: true,
                     ..Default::default()
                 },
+                source_path: None,
             }],
         )
         .unwrap();
@@ -5773,6 +5996,7 @@ mod tests {
                     mcode: true,
                     ..Default::default()
                 },
+                source_path: None,
             }],
         )
         .is_err());
@@ -5808,6 +6032,7 @@ mod tests {
                         mcode: true,
                         ..Default::default()
                     },
+                    source_path: None,
                 }],
             );
             if native_content == Some("different") {
@@ -5855,6 +6080,7 @@ mod tests {
                     mcode: true,
                     ..Default::default()
                 },
+                source_path: None,
             })
             .collect();
         let error = SkillService::import_from_apps(&db, selections)
@@ -5897,6 +6123,7 @@ mod tests {
                     gemini: true,
                     ..Default::default()
                 },
+                source_path: None,
             }],
         )
         .unwrap();
@@ -5943,6 +6170,7 @@ mod tests {
                     codex: true,
                     ..Default::default()
                 },
+                source_path: None,
             }],
         )
         .unwrap_err()
@@ -6218,6 +6446,7 @@ mod tests {
             vec![ImportSkillSelection {
                 directory: "native-skill".to_string(),
                 apps: SkillApps::default(),
+                source_path: None,
             }],
         )
         .expect("import native Pi skill");

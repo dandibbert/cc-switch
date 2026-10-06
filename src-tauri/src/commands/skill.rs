@@ -106,6 +106,29 @@ pub fn scan_unmanaged_skills(
     SkillService::scan_unmanaged(&app_state.db).map_err(|e| e.to_string())
 }
 
+/// 扫描一个项目里的 Skills（`.claude/skills`、`.agents/skills` 等）
+#[tauri::command]
+pub fn scan_project_skills(
+    app_state: State<'_, AppState>,
+    project_dir: String,
+) -> Result<Vec<UnmanagedSkill>, String> {
+    SkillService::scan_project(&app_state.db, std::path::Path::new(&project_dir))
+        .map_err(|e| e.to_string())
+}
+
+/// 选择要扫描 Skills 的项目目录
+#[tauri::command]
+pub async fn open_skill_project_dialog<R: tauri::Runtime>(
+    app: AppHandle<R>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    Ok(app
+        .dialog()
+        .file()
+        .blocking_pick_folder()
+        .map(|path| path.to_string()))
+}
+
 /// 从应用目录导入 Skills
 #[tauri::command]
 pub fn import_skills_from_apps(

@@ -74,14 +74,20 @@ export interface UnmanagedSkill {
   directory: string;
   name: string;
   description?: string;
+  /** 应用 id、"agents"、"cc-switch"，或项目来源 "project:<相对目录>" */
   foundIn: string[];
+  /** 这个版本的完整路径，导入时作为来源提交 */
   path: string;
+  /** 同一个目录名下有内容不同的版本，只能导入其中一个 */
+  conflict?: boolean;
 }
 
 /** 导入已有 Skill 时提交的应用启用状态 */
 export interface ImportSkillSelection {
   directory: string;
   apps: SkillApps;
+  /** 扫描结果里这个版本的路径（嵌套目录、项目目录、同名多版本都靠它） */
+  sourcePath?: string;
 }
 
 /** 技能对象（兼容旧 API） */
@@ -232,6 +238,16 @@ export const skillsApi = {
   /** 扫描未管理的 Skills */
   async scanUnmanaged(): Promise<UnmanagedSkill[]> {
     return await invoke("scan_unmanaged_skills");
+  },
+
+  /** 选择要扫描的项目目录 */
+  async openProjectDialog(): Promise<string | null> {
+    return await invoke("open_skill_project_dialog");
+  },
+
+  /** 扫描项目里的 Skills（.claude/skills、.agents/skills 等） */
+  async scanProject(projectDir: string): Promise<UnmanagedSkill[]> {
+    return await invoke("scan_project_skills", { projectDir });
   },
 
   /** 从应用目录导入 Skills */

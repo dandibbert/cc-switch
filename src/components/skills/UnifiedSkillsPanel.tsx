@@ -49,6 +49,7 @@ import {
 import type { AppId } from "@/lib/api/types";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { settingsApi, skillsApi } from "@/lib/api";
+import type { UnmanagedSkill } from "@/lib/api/skills";
 import { copyText } from "@/lib/clipboard";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,10 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
   const [fails, setFails] = useState<Record<string, WriteFailure>>({});
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // 项目扫描的结果：有值时导入对话框显示它，而不是本机已有的
+  const [projectSkills, setProjectSkills] = useState<UnmanagedSkill[] | null>(
+    null,
+  );
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [storageOpen, setStorageOpen] = useState(false);
   const [repoManagerOpen, setRepoManagerOpen] = useState(false);
@@ -198,7 +203,11 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     updateSkillMutation.isPending ||
     isUpdatingMany;
   const dialogOpen =
-    importOpen || restoreOpen || confirm !== null || repoManagerOpen;
+    importOpen ||
+    projectSkills !== null ||
+    restoreOpen ||
+    confirm !== null ||
+    repoManagerOpen;
   const navigationBlocked = writePending || mutationPending || dialogOpen;
   const interactionBlocked = navigationBlocked || isCheckingUpdates;
   // 外观上的禁用晚 300ms 才出现：点一个格子写得很快时不让整页按钮闪一下变灰。
@@ -649,11 +658,32 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     }
   };
 
+  const handleScanProject = async () => {
+    if (!beginWrite()) return;
+    try {
+      const projectDir = await skillsApi.openProjectDialog();
+      if (!projectDir) return;
+      const found = await skillsApi.scanProject(projectDir);
+      if (found.length === 0) {
+        toast.success(t("skillsPage.import.noProjectSkills"), {
+          closeButton: true,
+        });
+        return;
+      }
+      setProjectSkills(found);
+    } catch (error) {
+      toast.error(t("common.error"), { description: String(error) });
+    } finally {
+      endWrite();
+    }
+  };
+
   const handleImport = async (imports: ImportSkillSelection[]) => {
     if (!beginWrite(true)) return;
     try {
       const imported = await importMutation.mutateAsync(imports);
       setImportOpen(false);
+      setProjectSkills(null);
       toast.success(t("skills.importSuccess", { count: imported.length }), {
         closeButton: true,
       });
@@ -942,6 +972,9 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
               <DropdownMenuItem onSelect={() => void handleOpenImport()}>
                 <span className="flex-1">{t("skillsPage.addMenu.import")}</span>
                 {nUnmanaged > 0 && <NeutralBadge>{nUnmanaged}</NeutralBadge>}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void handleScanProject()}>
+                {t("skillsPage.addMenu.importProject")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1604,6 +1637,17 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
           isImporting={importMutation.isPending}
           onImport={(imports) => void handleImport(imports)}
           onClose={() => setImportOpen(false)}
+        />
+      )}
+
+      {projectSkills && (
+        <SkillImportDialog
+          skills={projectSkills}
+          fromProject
+          visibleAppIds={appIds}
+          isImporting={importMutation.isPending}
+          onImport={(imports) => void handleImport(imports)}
+          onClose={() => setProjectSkills(null)}
         />
       )}
 

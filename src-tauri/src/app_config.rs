@@ -269,8 +269,11 @@ pub struct UnmanagedSkill {
     pub description: Option<String>,
     /// 在哪些应用目录中发现（如 ["claude", "codex"]）
     pub found_in: Vec<String>,
-    /// 发现路径（首个匹配的完整路径）
+    /// 发现路径（首个匹配的完整路径）；导入时作为来源提交
     pub path: String,
+    /// 同一个目录名下还发现了内容不同的版本（或 CC Switch 目录里已有不同的同名目录）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub conflict: bool,
 }
 
 /// MCP 服务器定义（v3.7.0 统一结构）

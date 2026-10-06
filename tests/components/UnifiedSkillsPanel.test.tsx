@@ -602,6 +602,7 @@ describe("UnifiedSkillsPanel", () => {
     expect(m.importSkills.mock.calls[0][0]).toEqual([
       {
         directory: "shared-skill",
+        sourcePath: "/tmp/shared-skill",
         apps: {
           claude: true,
           codex: false,
