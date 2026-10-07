@@ -396,6 +396,12 @@ pub fn run() {
                 let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();
+                // 原进程关到托盘 / 静默启动时是 Accessory（不在 Dock）：再次打开应用只把窗口
+                // 显示出来的话，窗口在、Dock 图标却没了。和托盘「显示主窗口」一样恢复 Dock。
+                #[cfg(target_os = "macos")]
+                {
+                    tray::apply_tray_policy(app, true);
+                }
                 #[cfg(target_os = "linux")]
                 {
                     linux_fix::nudge_main_window(window.clone());

@@ -888,13 +888,10 @@ impl SkillService {
                     "external"
                 } else if desired && !loaded {
                     "notLoaded"
-                } else if !desired
-                    && loaded
-                    && !external
-                    && crate::services::skill_native::can_write(&app)
-                {
-                    // 没勾、应用还在加载，但能在它的配置里关掉（多半是旧版本留下的：那时没勾
-                    // 只是不投影，没写关闭项）。点格子或「立即重新同步」就能补上。
+                } else if !desired && loaded && crate::services::skill_native::can_write(&app) {
+                    // 没勾、应用还在加载，但能在它的配置里按名字关掉（多半是旧版本留下的：那时
+                    // 没勾只是不投影，没写关闭项；也可能是应用目录里一份旧副本）。点格子或
+                    // 「立即重新同步」就能补上，目录本身不动。
                     "notDisabled"
                 } else if !desired && loaded {
                     "stillLoaded"
@@ -3313,9 +3310,9 @@ impl SkillService {
             .collect()
     }
 
-    /// 没给 `app` 打开、它却仍会从自己读的目录里加载的 Skill：在它的原生配置里补上关闭项。
-    /// 旧版本取消勾选只是不投影，`~/.agents/skills` 这类目录里的同名 Skill 照样被加载。
-    /// 用户自己放的同名目录（不是 CC Switch 的投影）不动。
+    /// 没给 `app` 打开、它却仍会从自己读的目录里加载的 Skill：在它的原生配置里按名字补上
+    /// 关闭项。旧版本取消勾选只是不投影，`~/.agents/skills` 这类目录里的同名 Skill 照样被
+    /// 加载。只写配置，目录本身（包括用户自己放的）不动。
     fn disable_visible_leftovers(db: &Arc<Database>, app: &AppType) -> Vec<SkillSyncFailure> {
         use crate::services::skill_native;
 
@@ -3323,12 +3320,10 @@ impl SkillService {
         if !skill_native::can_write(app) {
             return failed;
         }
-        let (Ok(skills), Ok(ssot_dir)) = (db.get_all_installed_skills(), Self::get_ssot_dir())
-        else {
+        let Ok(skills) = db.get_all_installed_skills() else {
             return failed;
         };
         let roots = Self::app_read_roots(app);
-        let own_dir = Self::get_app_skills_dir(app).ok();
         for skill in skills.values() {
             let Ok(directory) = Self::require_valid_directory(&skill.directory) else {
                 continue;
@@ -3338,18 +3333,8 @@ impl SkillService {
             {
                 continue;
             }
-            let users_own = own_dir.as_ref().is_some_and(|dir| {
-                let own = dir.join(&directory);
-                (own.exists() || Self::is_symlink(&own))
-                    && Self::inspect_pi_skill_destination(
-                        &ssot_dir.join(&directory),
-                        &own,
-                        &directory,
-                    )
-                    .is_err()
-            });
             let native = Self::native_skill(skill);
-            if users_own || skill_native::is_disabled(app, &native) {
+            if skill_native::is_disabled(app, &native) {
                 continue;
             }
             if let Err(err) = skill_native::set_disabled(app, &native, true) {

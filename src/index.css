@@ -581,3 +581,9 @@ input[type="password"]::-ms-clear {
     flex: 1 1 0%;
   }
 }
+
+/* 不接鼠标的提示（HoverTip 的 disableHoverableContent）：Radix 外面那层定位容器也不能接，
+   否则提示盖住下一行时，鼠标移过去会被它挡住，提示在两个格子之间来回闪。 */
+[data-radix-popper-content-wrapper]:has(> .pointer-events-none) {
+  pointer-events: none;
+}

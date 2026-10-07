@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isKeyboardModality } from "@/lib/inputModality";
+import { cn } from "@/lib/utils";
 
 export interface HoverTipProps {
   /** 提示内容：说这个按钮做什么，一句短话。为空时原样渲染子元素。 */
@@ -56,9 +57,11 @@ export function HoverTip({
         <TooltipContent
           side={side}
           align={align}
-          className={
-            disableHoverableContent ? "pointer-events-none" : undefined
-          }
+          className={cn(
+            disableHoverableContent && "pointer-events-none",
+            // 多行说明放不进胶囊：换成圆角矩形
+            typeof content !== "string" && "rounded-[10px] py-2",
+          )}
         >
           {stripEllipsis(content)}
         </TooltipContent>

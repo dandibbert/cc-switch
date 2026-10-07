@@ -4528,10 +4528,10 @@
     "headerUpdatesClear": "显示全部 Skill",
     "updateAllCount": "全部更新（{{count}} 个）",
     "cellNote": {
-      "notLoaded": "已勾选，但 {{app}} 实际读不到它：文件不在它读取的目录里，或被它自己的配置关掉了。",
-      "stillLoaded": "未勾选，但 {{app}} 仍会加载它，CC Switch 这边关不掉：可能是 {{app}} 没装（没有配置文件可写）、{{app}} 不支持按 Skill 关闭，或它加载的是你自己放的同名目录。",
-      "external": "{{app}} 读到的是你自己放的同名目录，不是 CC Switch 管理的这一份。",
-      "notDisabled": "未勾选，但 {{app}} 仍会加载它：{{app}} 也会读 ~/.agents/skills 等目录，而它的配置里还没有关掉这个 Skill（多半是旧版本留下的）。点一下这个格子就会在 {{app}} 的配置里关掉；「立即重新同步」会一次补齐所有这类遗留。"
+      "notLoaded": "已勾选，但 {{app}} 读不到它（不在它读取的目录里，或被它自己的配置关了）。",
+      "stillLoaded": "未勾选，但 {{app}} 还会加载它。{{app}} 没装或不支持按 Skill 关闭，CC Switch 关不掉。",
+      "external": "{{app}} 读到的是你自己放的同名目录，不是 CC Switch 管理的这份。",
+      "notDisabled": "未勾选，但 {{app}} 还会从 ~/.agents/skills 等目录加载它。点一下，在 {{app}} 配置里关掉。"
     },
     "plugins": {
       "title": "Claude Code 插件",

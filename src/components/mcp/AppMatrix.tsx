@@ -117,11 +117,13 @@ export function MatrixCell({
   return (
     <span className="flex w-9 shrink-0 justify-center" {...tracking}>
       <HoverTip
+        // 提示本身不接鼠标：说明文字长、盖到下一行时，鼠标移过去不会卡住它、来回闪
+        disableHoverableContent
         content={
           note ? (
-            <span className="flex max-w-[260px] flex-col gap-0.5">
+            <span className="flex max-w-[240px] flex-col gap-0.5">
               <span>{label}</span>
-              <span className="text-warning-text">{note}</span>
+              <span className="font-normal text-inverse-fg/80">{note}</span>
             </span>
           ) : (
             label
@@ -138,20 +140,13 @@ export function MatrixCell({
             event.stopPropagation();
             onClick();
           }}
-          className="group/cell relative flex h-7 w-7 items-center justify-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
+          className="group/cell flex h-7 w-7 items-center justify-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45"
         >
-          {note && (
-            <span
-              aria-hidden="true"
-              data-testid="matrix-cell-note"
-              className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-warning"
-            />
-          )}
           <span
             aria-hidden="true"
             className={cn(
               // 和 ui-checkbox 同一个外观：1.5px 描边、白底；开 = 主题色底 + 勾（勾从中心放大出来）
-              "flex h-4 w-4 items-center justify-center rounded-[4px] border-[1.5px] transition-colors duration-150",
+              "relative flex h-4 w-4 items-center justify-center rounded-[4px] border-[1.5px] transition-colors duration-150",
               state === "on" &&
                 "border-action bg-action text-action-fg group-hover/cell:border-action-hover group-hover/cell:bg-action-hover",
               state === "off" &&
@@ -160,6 +155,13 @@ export function MatrixCell({
                 "border-warning bg-warning-soft text-warning-text",
             )}
           >
+            {/* 开关和应用实际情况对不上：勾选框右上角一个角标 */}
+            {note && (
+              <span
+                data-testid="matrix-cell-note"
+                className="absolute -right-[5px] -top-[5px] h-2 w-2 rounded-full bg-warning ring-2 ring-surface"
+              />
+            )}
             {state === "fail" ? (
               <AlertTriangle className="h-3 w-3" strokeWidth={2.25} />
             ) : (
