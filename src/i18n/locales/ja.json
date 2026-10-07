@@ -4367,8 +4367,7 @@
     },
     "moreMenu": {
       "restore": "バックアップから復元",
-      "repos": "リポジトリの管理",
-      "plugins": "Claude Code プラグイン"
+      "repos": "リポジトリの管理"
     },
     "viewAria": "Skills の表示",
     "viewInstalled": "インストール済み",
@@ -4399,11 +4398,14 @@
       "enableToAria": "選択した {{count}} 件の Skill を有効にする先",
       "disable": "オフにする",
       "disableAria": "選択した {{count}} 件の Skill をこのアプリでオフ",
-      "uninstall": "アンインストール"
+      "uninstall": "アンインストール",
+      "selectAllAria": "一覧の {{count}} 件の Skill をすべて選択",
+      "invert": "選択を反転",
+      "allApps": "すべてのアプリ"
     },
-    "piColumnTitle": "Pi は ~/.pi/agent/skills にそのフォルダーがあるかで判定します",
+    "piColumnTitle": "Pi は ~/.pi/agent/skills と ~/.agents/skills の Skill を読み込みます",
     "piHelpTitle": "Pi の有効の判定",
-    "piHelp": "~/.pi/agent/skills にそのフォルダーがあるかどうかです。",
+    "piHelp": "Pi は ~/.pi/agent/skills と ~/.agents/skills の Skill を読み込みます。ここで無効にすると Pi の設定に書き込み、フォルダは削除しません。",
     "pop": {
       "onlyApp": "{{app}} で有効なものだけ表示",
       "showAll": "すべての Skill を表示"
@@ -4444,7 +4446,11 @@
       "selectionAlreadyOn": "選択した {{count}} 件の Skill は既に {{app}} で有効です",
       "selectionAlreadyOff": "選択した {{count}} 件の Skill はどれも {{app}} で有効ではありません",
       "disabledSelection": "{{app}} で {{count}} 件の {{noun}} をオフにしました",
-      "restartToApply": "{{app}} の設定に書き込みました。{{app}} を再起動すると反映されます。"
+      "restartToApply": "{{app}} の設定に書き込みました。{{app}} を再起動すると反映されます。",
+      "allAppsEnabled": "すべてのアプリで {{count}} 件の{{noun}}を有効にしました",
+      "allAppsDisabled": "すべてのアプリで {{count}} 件の{{noun}}を無効にしました",
+      "selectionAllAppsAlreadyOn": "選択した {{count}} 件の Skill はすでにすべてのアプリで有効です",
+      "selectionAllAppsAlreadyOff": "選択した {{count}} 件の Skill はどのアプリでも有効になっていません"
     },
     "installTo": {
       "prefix": "インストール先：",
@@ -4534,10 +4540,9 @@
       "notDisabled": "チェックしていませんが、{{app}} は ~/.agents/skills などから読み込みます。クリックすると {{app}} の設定でオフにします。"
     },
     "plugins": {
-      "title": "Claude Code プラグイン",
-      "lead": "一覧は Claude Code 自身の claude plugin list から取得しています。ここで切り替えられるのは個人とアカウント同期のプラグインだけです。インストール、更新、マーケットプレイスは Claude Code の /plugin で行ってください。開いている Claude Code のセッションには再起動が必要な場合があります。",
+      "lead": "チェックすると Claude Code で有効になります。切り替えられるのは個人とアカウント同期のプラグインだけです。インストールや更新は Claude Code の /plugin で。Claude Code の再起動後に反映されます。",
       "refresh": "再読み込み",
-      "empty": "インストール済みの Claude Code プラグインはありません。",
+      "empty": "Claude Code の /plugin でインストールしたプラグインがここに表示されます。",
       "skills": "同梱の Skill：{{skills}}",
       "readOnly": "このレベルのプラグインは Claude Code の /plugin で管理してください。",
       "readOnlyProject": "プロジェクト {{path}} のプラグインです。そのプロジェクトで /plugin を使って管理してください。",
@@ -4548,8 +4553,23 @@
         "managed": "組織管理",
         "synced": "アカウント同期",
         "session": "このセッション"
-      }
-    }
+      },
+      "loading": "Claude Code プラグインを読み込み中…",
+      "loadFailed": "Claude Code プラグインを読み込めませんでした",
+      "emptyTitle": "プラグインはまだありません",
+      "count": "{{count}} 件のプラグイン",
+      "listLabel": "Claude Code プラグイン",
+      "noSkills": "同梱の Skill なし",
+      "toastEnabled": "Claude Code で {{name}} を有効にしました",
+      "toastDisabled": "Claude Code で {{name}} を無効にしました",
+      "cell": {
+        "on": "{{name}} · Claude Code：有効",
+        "off": "{{name}} · Claude Code：無効"
+      },
+      "readOnlyOn": "有効（ここでは切り替えられません）",
+      "readOnlyOff": "無効（ここでは切り替えられません）"
+    },
+    "viewPlugins": "Claude Code プラグイン"
   },
   "newLayoutNotice": {
     "title": "画面が新しくなりました",

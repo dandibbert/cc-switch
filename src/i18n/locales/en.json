@@ -4367,8 +4367,7 @@
     },
     "moreMenu": {
       "restore": "Restore from backup",
-      "repos": "Manage repositories",
-      "plugins": "Claude Code plugins"
+      "repos": "Manage repositories"
     },
     "viewAria": "Skills view",
     "viewInstalled": "Installed",
@@ -4399,11 +4398,14 @@
       "enableToAria": "Enable the {{count}} selected Skills in",
       "disable": "Turn off in",
       "disableAria": "Turn off the {{count}} selected Skills in",
-      "uninstall": "Uninstall"
+      "uninstall": "Uninstall",
+      "selectAllAria": "Select all {{count}} Skills in the list",
+      "invert": "Invert",
+      "allApps": "All apps"
     },
-    "piColumnTitle": "Pi counts a Skill as enabled when its folder exists in ~/.pi/agent/skills",
+    "piColumnTitle": "Pi loads Skills from ~/.pi/agent/skills and ~/.agents/skills",
     "piHelpTitle": "How Pi counts as enabled",
-    "piHelp": "Whether the folder exists in ~/.pi/agent/skills.",
+    "piHelp": "Pi loads Skills from ~/.pi/agent/skills and ~/.agents/skills. Disabling one here writes to Pi's settings; no folder is deleted.",
     "pop": {
       "onlyApp": "Show only ones enabled in {{app}}",
       "showAll": "Show all Skills"
@@ -4444,7 +4446,11 @@
       "selectionAlreadyOn": "The {{count}} selected Skills are already enabled in {{app}}",
       "selectionAlreadyOff": "None of the {{count}} selected Skills are enabled in {{app}}",
       "disabledSelection": "Turned off {{count}} {{noun}} in {{app}}",
-      "restartToApply": "Saved to {{app}}'s config. Restart {{app}} to apply it."
+      "restartToApply": "Saved to {{app}}'s config. Restart {{app}} to apply it.",
+      "allAppsEnabled": "Enabled {{count}} {{noun}} in all apps",
+      "allAppsDisabled": "Disabled {{count}} {{noun}} in all apps",
+      "selectionAllAppsAlreadyOn": "The {{count}} selected Skills are already enabled in all apps",
+      "selectionAllAppsAlreadyOff": "None of the {{count}} selected Skills is enabled in any app"
     },
     "installTo": {
       "prefix": "Install to: ",
@@ -4534,10 +4540,9 @@
       "notDisabled": "Not ticked, but {{app}} still loads it from folders such as ~/.agents/skills. Click to switch it off in {{app}}'s config."
     },
     "plugins": {
-      "title": "Claude Code plugins",
-      "lead": "Listed by Claude Code's own claude plugin list. Only personal and account-synced plugins can be switched here; install, update and marketplaces stay in Claude Code's /plugin. Open Claude Code sessions may need a restart to pick up a change.",
+      "lead": "Tick to enable in Claude Code. Only personal and account-synced plugins can be switched here; install and update with /plugin in Claude Code. Takes effect after restarting Claude Code.",
       "refresh": "Reload",
-      "empty": "No Claude Code plugins are installed.",
+      "empty": "Plugins you install with /plugin in Claude Code show up here.",
       "skills": "Bundled Skills: {{skills}}",
       "readOnly": "Manage plugins at this level with /plugin in Claude Code.",
       "readOnlyProject": "Belongs to project {{path}}; manage it with /plugin in that project.",
@@ -4548,8 +4553,23 @@
         "managed": "Managed",
         "synced": "Account sync",
         "session": "This session"
-      }
-    }
+      },
+      "loading": "Reading Claude Code plugins…",
+      "loadFailed": "Couldn't read Claude Code plugins",
+      "emptyTitle": "No plugins yet",
+      "count": "{{count}} plugins",
+      "listLabel": "Claude Code plugins",
+      "noSkills": "No Skills bundled",
+      "toastEnabled": "Enabled {{name}} in Claude Code",
+      "toastDisabled": "Disabled {{name}} in Claude Code",
+      "cell": {
+        "on": "{{name}} · Claude Code: enabled",
+        "off": "{{name}} · Claude Code: not enabled"
+      },
+      "readOnlyOn": "Enabled (can't be switched here)",
+      "readOnlyOff": "Not enabled (can't be switched here)"
+    },
+    "viewPlugins": "Claude Code plugins"
   },
   "newLayoutNotice": {
     "title": "CC Switch has a new look",

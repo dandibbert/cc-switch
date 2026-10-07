@@ -70,14 +70,14 @@ import { RepoManagerPanel } from "./RepoManagerPanel";
 import { SkillImportDialog } from "./SkillImportDialog";
 import { SkillRestoreDialog } from "./SkillRestoreDialog";
 import { SkillsStorageSheet } from "./SkillsStorageSheet";
-import { ClaudePluginsDialog } from "./ClaudePluginsDialog";
+import { ClaudePluginsView } from "./ClaudePluginsView";
 import { useSkillInstallTargets } from "./useSkillInstallTargets";
 import { describeRepoFailures } from "./repoFailures";
 import type { ZipSkippedSkill } from "@/lib/api/skills";
 
 const BACKUP_DIR = "~/.cc-switch/skill-backups";
 
-type SkillsView = "installed" | "discover";
+type SkillsView = "installed" | "discover" | "plugins";
 type StatusFilter = "all" | "updates" | "none" | `app:${AppId}`;
 
 interface WriteFailure {
@@ -131,8 +131,11 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
   const [discoverMounted, setDiscoverMounted] = useState(
     initialView === "discover",
   );
+  // 插件页签第一次打开才挂载：列表要跑 `claude plugin list`，不该进页面就跑
+  const [pluginsMounted, setPluginsMounted] = useState(false);
   useEffect(() => {
     if (view === "discover") setDiscoverMounted(true);
+    if (view === "plugins") setPluginsMounted(true);
   }, [view]);
   const [discoverQuery, setDiscoverQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -142,7 +145,6 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
   const [fails, setFails] = useState<Record<string, WriteFailure>>({});
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [pluginsOpen, setPluginsOpen] = useState(false);
   // 项目扫描的结果：有值时导入对话框显示它，而不是本机已有的
   const [projectSkills, setProjectSkills] = useState<UnmanagedSkill[] | null>(
     null,
@@ -548,6 +550,75 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
       on: "appMatrix.toast.enabled",
       off: "skillsPage.toast.disabledSelection",
     });
+  };
+
+  // 选中的 Skill 在所有显示的应用里一起启用 / 停用：一条提示、一次撤销。
+  const handleSelectionAllApps = async (enabled: boolean) => {
+    const chosen = installedSkills.filter((skill) => selected.has(skill.id));
+    const plan = appIds
+      .map((app) => ({
+        app,
+        ids: chosen
+          .filter((skill) => Boolean(skill.apps[app]) !== enabled)
+          .map((skill) => skill.id),
+      }))
+      .filter((step) => step.ids.length > 0);
+    if (plan.length === 0) {
+      toast.info(
+        t(
+          enabled
+            ? "skillsPage.toast.selectionAllAppsAlreadyOn"
+            : "skillsPage.toast.selectionAllAppsAlreadyOff",
+          { count: chosen.length },
+        ),
+        { closeButton: true },
+      );
+      return;
+    }
+    if (!beginWrite()) return;
+    try {
+      const done: Array<{ app: AppId; ids: string[] }> = [];
+      const changed = new Set<string>();
+      let failed = 0;
+      for (const step of plan) {
+        const result = await writeMany(step.ids, step.app, enabled);
+        failed += result.failed;
+        if (result.succeeded.length > 0) {
+          done.push({ app: step.app, ids: result.succeeded });
+          for (const id of result.succeeded) changed.add(id);
+        }
+      }
+      let text = t(
+        enabled
+          ? "skillsPage.toast.allAppsEnabled"
+          : "skillsPage.toast.allAppsDisabled",
+        { count: changed.size, noun },
+      );
+      if (failed) text += t("appMatrix.toast.partialFail", { count: failed });
+      showUndoToast(
+        text,
+        t("appMatrix.undo"),
+        done.length
+          ? () => {
+              void (async () => {
+                if (!beginWrite()) return;
+                try {
+                  for (const step of done) {
+                    await writeMany(step.ids, step.app, !enabled);
+                  }
+                  toast.success(t("appMatrix.toast.undone"), {
+                    closeButton: true,
+                  });
+                } finally {
+                  endWrite();
+                }
+              })();
+            }
+          : undefined,
+      );
+    } finally {
+      endWrite();
+    }
   };
 
   // ─── 卸载 / 更新 ────────────────────────────────────────────────────
@@ -1041,9 +1112,6 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
               <DropdownMenuItem onSelect={() => setStorageOpen(true)}>
                 {t("skills.storageSheet.open")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setPluginsOpen(true)}>
-                {t("skillsPage.moreMenu.plugins")}
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </>
@@ -1079,6 +1147,10 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
         {
           value: "discover",
           label: t("skillsPage.viewDiscover"),
+        },
+        {
+          value: "plugins",
+          label: t("skillsPage.viewPlugins"),
         },
       ]}
       trailing={<div ref={setTabsTrailingSlot} className="flex items-center" />}
@@ -1157,6 +1229,12 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
     }
 
     const selectionActive = selected.size > 0;
+    const someVisibleSelected = filteredSkills.some((skill) =>
+      selected.has(skill.id),
+    );
+    const allVisibleSelected =
+      filteredSkills.length > 0 &&
+      filteredSkills.every((skill) => selected.has(skill.id));
     return (
       <div
         data-testid="skills-matrix"
@@ -1165,7 +1243,31 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
         <MatrixColumnHighlight>
           <div className="min-w-[600px]">
             <div className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-subtle px-2">
-              <div className="flex min-w-0 flex-1 items-center gap-0.5 ps-[22px]">
+              <span className="flex w-6 shrink-0 justify-center">
+                <input
+                  type="checkbox"
+                  className="ui-checkbox"
+                  aria-label={t("skillsPage.bulk.selectAllAria", {
+                    count: filteredSkills.length,
+                  })}
+                  disabled={filteredSkills.length === 0}
+                  checked={allVisibleSelected}
+                  ref={(input) => {
+                    if (input) {
+                      input.indeterminate =
+                        someVisibleSelected && !allVisibleSelected;
+                    }
+                  }}
+                  onChange={() =>
+                    setSelected(
+                      allVisibleSelected
+                        ? new Set()
+                        : new Set(filteredSkills.map((skill) => skill.id)),
+                    )
+                  }
+                />
+              </span>
+              <div className="flex min-w-0 flex-1 items-center gap-0.5">
                 {selectionActive ? (
                   <>
                     <span className="shrink-0 whitespace-nowrap pe-1.5 ps-2.5 text-body font-medium tabular-nums">
@@ -1177,8 +1279,10 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
                         count: selected.size,
                       })}
                       apps={appIds}
+                      allLabel={t("skillsPage.bulk.allApps")}
                       disabled={controlsDisabled}
                       onPick={(app) => handleSelectionToggle(app, true)}
+                      onPickAll={() => void handleSelectionAllApps(true)}
                     />
                     <AppMenuButton
                       label={t("skillsPage.bulk.disable")}
@@ -1186,9 +1290,30 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
                         count: selected.size,
                       })}
                       apps={appIds}
+                      allLabel={t("skillsPage.bulk.allApps")}
                       disabled={controlsDisabled}
                       onPick={(app) => handleSelectionToggle(app, false)}
+                      onPickAll={() => void handleSelectionAllApps(false)}
                     />
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      size="compact"
+                      className="px-2"
+                      disabled={filteredSkills.length === 0}
+                      onClick={() =>
+                        setSelected(
+                          (prev) =>
+                            new Set(
+                              filteredSkills
+                                .map((skill) => skill.id)
+                                .filter((id) => !prev.has(id)),
+                            ),
+                        )
+                      }
+                    >
+                      {t("skillsPage.bulk.invert")}
+                    </Button>
                     <Button
                       type="button"
                       variant="quiet"
@@ -1501,6 +1626,20 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
             />
           </div>
         )}
+        {pluginsMounted && (
+          <div
+            className={cn(
+              "min-h-0 flex-1 flex-col",
+              view === "plugins" ? "flex" : "hidden",
+            )}
+          >
+            <ClaudePluginsView
+              renderViewTabs={(trailing) =>
+                viewTabsTrailing("plugins", trailing)
+              }
+            />
+          </div>
+        )}
         <div
           className={cn(
             "min-h-0 flex-1 flex-col",
@@ -1724,9 +1863,6 @@ const UnifiedSkillsPanel: React.FC<UnifiedSkillsPanelProps> = ({
       />
 
       <SkillsStorageSheet open={storageOpen} onOpenChange={setStorageOpen} />
-      {pluginsOpen && (
-        <ClaudePluginsDialog open onOpenChange={setPluginsOpen} />
-      )}
 
       {repoManagerOpen && (
         <RepoManagerContainer onClose={() => setRepoManagerOpen(false)} />
@@ -2027,14 +2163,19 @@ function AppMenuButton({
   label,
   ariaLabel,
   apps,
+  allLabel,
   disabled,
   onPick,
+  onPickAll,
 }: {
   label: string;
   ariaLabel: string;
   apps: AppId[];
+  /** 有值时菜单顶上多一项「所有应用」 */
+  allLabel?: string;
   disabled: boolean;
   onPick: (app: AppId) => void;
+  onPickAll?: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -2055,6 +2196,12 @@ function AppMenuButton({
         aria-label={ariaLabel}
         className="min-w-[200px]"
       >
+        {allLabel && onPickAll && (
+          <>
+            <DropdownMenuItem onSelect={onPickAll}>{allLabel}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {apps.map((app) => (
           <DropdownMenuItem key={app} onSelect={() => onPick(app)}>
             <AppGlyph app={app} size={16} badgeClassName="bg-surface" />

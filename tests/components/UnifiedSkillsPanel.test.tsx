@@ -335,6 +335,68 @@ describe("UnifiedSkillsPanel", () => {
     );
   });
 
+  it("selects all, inverts, and enables the selection in every app", async () => {
+    m.installed = [
+      makeSkill({ id: "a", name: "A", apps: { claude: true } }),
+      makeSkill({ id: "b", name: "B" }),
+      makeSkill({ id: "c", name: "C", apps: { claude: true, codex: true } }),
+    ];
+    renderPanel();
+    const selectAll = screen.getByRole("checkbox", {
+      name: "skillsPage.bulk.selectAllAria",
+    });
+    await userEvent.click(selectAll);
+    expect(screen.getByText("skillsPage.bulk.selected")).toBeInTheDocument();
+    const rowBoxes = () =>
+      screen.getAllByRole("checkbox", { name: "skillsPage.selectAria" });
+    expect(rowBoxes().every((box) => (box as HTMLInputElement).checked)).toBe(
+      true,
+    );
+
+    // 取消一行 → 表头是半选；反选 → 只剩那一行
+    await userEvent.click(rowBoxes()[0]);
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+    await userEvent.click(
+      screen.getByRole("button", { name: "skillsPage.bulk.invert" }),
+    );
+    expect(rowBoxes().map((box) => (box as HTMLInputElement).checked)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+
+    await userEvent.click(selectAll); // 再全选
+    await userEvent.click(
+      screen.getByRole("button", { name: /skillsPage.bulk.enableTo/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "skillsPage.bulk.allApps" }),
+    );
+    await waitFor(() =>
+      expect(m.bulkToggle).toHaveBeenCalledWith({
+        ids: ["b"],
+        app: "claude",
+        enabled: true,
+      }),
+    );
+    expect(m.bulkToggle).toHaveBeenCalledWith({
+      ids: ["a", "b"],
+      app: "codex",
+      enabled: true,
+    });
+    expect(m.bulkToggle).toHaveBeenCalledWith({
+      ids: ["a", "b", "c"],
+      app: "pi",
+      enabled: true,
+    });
+    await waitFor(() =>
+      expect(m.toastSuccess).toHaveBeenCalledWith(
+        "skillsPage.toast.allAppsEnabled",
+        expect.anything(),
+      ),
+    );
+  });
+
   it("marks partial bulk failures in the matrix", async () => {
     m.installed = [
       makeSkill({ id: "a", name: "A" }),

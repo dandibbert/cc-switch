@@ -4367,8 +4367,7 @@
     },
     "moreMenu": {
       "restore": "从备份恢复",
-      "repos": "仓库管理",
-      "plugins": "Claude Code 插件"
+      "repos": "仓库管理"
     },
     "viewAria": "Skills 视图",
     "viewInstalled": "已安装",
@@ -4399,11 +4398,14 @@
       "enableToAria": "把选中的 {{count}} 个 Skill 启用到",
       "disable": "停用",
       "disableAria": "在这个应用里停用选中的 {{count}} 个 Skill",
-      "uninstall": "卸载"
+      "uninstall": "卸载",
+      "selectAllAria": "全选列表里的 {{count}} 个 Skill",
+      "invert": "反选",
+      "allApps": "所有应用"
     },
-    "piColumnTitle": "Pi 按 ~/.pi/agent/skills 里有没有这个目录来判断",
+    "piColumnTitle": "Pi 会加载 ~/.pi/agent/skills 和 ~/.agents/skills 里的 Skill",
     "piHelpTitle": "Pi 怎么算启用",
-    "piHelp": "看 ~/.pi/agent/skills 里有没有这个目录。",
+    "piHelp": "Pi 会加载 ~/.pi/agent/skills 和 ~/.agents/skills 里的 Skill。在这里停用会写进 Pi 的设置，不删目录。",
     "pop": {
       "onlyApp": "只看在 {{app}} 启用的",
       "showAll": "显示全部 Skill"
@@ -4444,7 +4446,11 @@
       "selectionAlreadyOn": "选中的 {{count}} 个 Skill 已经在 {{app}} 启用",
       "selectionAlreadyOff": "选中的 {{count}} 个 Skill 都没有在 {{app}} 启用",
       "disabledSelection": "已在 {{app}} 停用 {{count}} 个 {{noun}}",
-      "restartToApply": "已写入 {{app}} 的配置，重启 {{app}} 后生效。"
+      "restartToApply": "已写入 {{app}} 的配置，重启 {{app}} 后生效。",
+      "allAppsEnabled": "已在所有应用启用 {{count}} 个 {{noun}}",
+      "allAppsDisabled": "已在所有应用停用 {{count}} 个 {{noun}}",
+      "selectionAllAppsAlreadyOn": "选中的 {{count}} 个 Skill 已经在所有应用启用",
+      "selectionAllAppsAlreadyOff": "选中的 {{count}} 个 Skill 都没有在任何应用启用"
     },
     "installTo": {
       "prefix": "安装到：",
@@ -4534,10 +4540,9 @@
       "notDisabled": "未勾选，但 {{app}} 还会从 ~/.agents/skills 等目录加载它。点一下，在 {{app}} 配置里关掉。"
     },
     "plugins": {
-      "title": "Claude Code 插件",
-      "lead": "列表来自 Claude Code 自己的 claude plugin list。这里只能开关个人和账号同步的插件；安装、升级、插件市场请在 Claude Code 里用 /plugin。已打开的 Claude Code 会话可能要重启才生效。",
+      "lead": "勾选即在 Claude Code 里启用。只能开关个人和账号同步的插件；安装、升级用 Claude Code 的 /plugin。重启 Claude Code 后生效。",
       "refresh": "重新读取",
-      "empty": "没有已安装的 Claude Code 插件。",
+      "empty": "在 Claude Code 里用 /plugin 安装插件后，会出现在这里。",
       "skills": "带的 Skill：{{skills}}",
       "readOnly": "这一级的插件请在 Claude Code 里用 /plugin 管理。",
       "readOnlyProject": "属于项目 {{path}}，请在那个项目里用 /plugin 管理。",
@@ -4548,8 +4553,23 @@
         "managed": "组织托管",
         "synced": "账号同步",
         "session": "本次会话"
-      }
-    }
+      },
+      "loading": "正在读取 Claude Code 插件…",
+      "loadFailed": "没读到 Claude Code 插件",
+      "emptyTitle": "还没有插件",
+      "count": "{{count}} 个插件",
+      "listLabel": "Claude Code 插件",
+      "noSkills": "不带 Skill",
+      "toastEnabled": "已在 Claude Code 启用 {{name}}",
+      "toastDisabled": "已在 Claude Code 停用 {{name}}",
+      "cell": {
+        "on": "{{name}} · Claude Code：已启用",
+        "off": "{{name}} · Claude Code：未启用"
+      },
+      "readOnlyOn": "已启用（这里不能开关）",
+      "readOnlyOff": "未启用（这里不能开关）"
+    },
+    "viewPlugins": "Claude Code 插件"
   },
   "newLayoutNotice": {
     "title": "界面改版了",

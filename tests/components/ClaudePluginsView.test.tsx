@@ -3,13 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ClaudePluginsDialog } from "@/components/skills/ClaudePluginsDialog";
+import { ClaudePluginsView } from "@/components/skills/ClaudePluginsView";
 import type { ClaudePlugin } from "@/lib/api/skills";
 
 const m = vi.hoisted(() => ({
   list: vi.fn(),
   setEnabled: vi.fn(),
   toastError: vi.fn(),
+  toastSuccess: vi.fn(),
 }));
 
 vi.mock("@/lib/api/skills", async (importOriginal) => {
@@ -24,7 +25,9 @@ vi.mock("@/lib/api/skills", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/toast", () => ({ toast: { error: m.toastError } }));
+vi.mock("@/lib/toast", () => ({
+  toast: { error: m.toastError, success: m.toastSuccess },
+}));
 
 const plugin = (rest: Partial<ClaudePlugin>): ClaudePlugin => ({
   id: "fmt@acme",
@@ -37,24 +40,27 @@ const plugin = (rest: Partial<ClaudePlugin>): ClaudePlugin => ({
   ...rest,
 });
 
-function renderDialog() {
+function renderView() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <ClaudePluginsDialog open onOpenChange={() => {}} />
+      <ClaudePluginsView renderViewTabs={(trailing) => trailing} />
     </QueryClientProvider>,
   );
 }
 
-describe("ClaudePluginsDialog", () => {
+const cells = () =>
+  screen.getAllByRole("button", { name: /skillsPage.plugins.cell/ });
+
+describe("ClaudePluginsView", () => {
   beforeEach(() => {
     m.list.mockReset();
     m.setEnabled.mockReset().mockResolvedValue(undefined);
   });
 
-  it("lists plugins, switches personal ones and leaves project ones read-only", async () => {
+  it("switches personal plugins and lists project ones read-only", async () => {
     m.list.mockResolvedValue([
       plugin({ skills: ["review", "lint"] }),
       plugin({
@@ -64,27 +70,33 @@ describe("ClaudePluginsDialog", () => {
         projectPath: "/repo",
       }),
     ]);
-    renderDialog();
-    expect(await screen.findByText("fmt@acme")).toBeInTheDocument();
+    renderView();
+    expect(await screen.findByText("fmt")).toBeInTheDocument();
+    expect(screen.getByText("@acme")).toBeInTheDocument();
     expect(screen.getByText("skillsPage.plugins.skills")).toBeInTheDocument();
-    const [personal, project] = screen.getAllByRole("checkbox");
-    expect(project).toBeDisabled();
+    // 只读那一行没有开关
+    expect(cells()).toHaveLength(1);
     expect(
-      screen.getByText("skillsPage.plugins.readOnlyProject"),
+      screen.getByLabelText("skillsPage.plugins.readOnlyOn"),
     ).toBeInTheDocument();
 
-    await userEvent.click(personal);
+    await userEvent.click(cells()[0]);
     await waitFor(() =>
       expect(m.setEnabled).toHaveBeenCalledWith("fmt@acme", "user", false),
     );
     await waitFor(() => expect(m.list).toHaveBeenCalledTimes(2));
+    expect(m.toastSuccess).toHaveBeenCalledWith(
+      "skillsPage.plugins.toastDisabled",
+      { closeButton: true },
+    );
   });
 
   it("shows Claude Code's own refusal", async () => {
     m.list.mockResolvedValue([plugin({})]);
     m.setEnabled.mockRejectedValue("lint is required by fmt");
-    renderDialog();
-    await userEvent.click(await screen.findByRole("checkbox"));
+    renderView();
+    await screen.findByText("fmt");
+    await userEvent.click(cells()[0]);
     await waitFor(() =>
       expect(m.toastError).toHaveBeenCalledWith("common.error", {
         description: "lint is required by fmt",
@@ -92,11 +104,16 @@ describe("ClaudePluginsDialog", () => {
     );
   });
 
-  it("explains when the CLI can't be run", async () => {
+  it("explains when the CLI can't be run and offers a retry", async () => {
     m.list.mockRejectedValue("claude is not installed");
-    renderDialog();
+    renderView();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "claude is not installed",
     );
+    m.list.mockResolvedValue([]);
+    await userEvent.click(screen.getByRole("button", { name: "common.retry" }));
+    expect(
+      await screen.findByText("skillsPage.plugins.emptyTitle"),
+    ).toBeInTheDocument();
   });
 });

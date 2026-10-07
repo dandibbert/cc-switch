@@ -4368,8 +4368,7 @@
     },
     "moreMenu": {
       "restore": "從備份還原",
-      "repos": "倉庫管理",
-      "plugins": "Claude Code 外掛"
+      "repos": "倉庫管理"
     },
     "viewAria": "Skills 檢視",
     "viewInstalled": "已安裝",
@@ -4400,11 +4399,14 @@
       "enableToAria": "把選中的 {{count}} 個 Skill 啟用到",
       "disable": "停用",
       "disableAria": "在這個應用裡停用選中的 {{count}} 個 Skill",
-      "uninstall": "解除安裝"
+      "uninstall": "解除安裝",
+      "selectAllAria": "全選清單裡的 {{count}} 個 Skill",
+      "invert": "反選",
+      "allApps": "所有應用"
     },
-    "piColumnTitle": "Pi 按 ~/.pi/agent/skills 裡有沒有這個目錄來判斷",
+    "piColumnTitle": "Pi 會載入 ~/.pi/agent/skills 和 ~/.agents/skills 裡的 Skill",
     "piHelpTitle": "Pi 怎麼算啟用",
-    "piHelp": "看 ~/.pi/agent/skills 裡有沒有這個目錄。",
+    "piHelp": "Pi 會載入 ~/.pi/agent/skills 和 ~/.agents/skills 裡的 Skill。在這裡停用會寫進 Pi 的設定，不刪目錄。",
     "pop": {
       "onlyApp": "只看在 {{app}} 啟用的",
       "showAll": "顯示全部 Skill"
@@ -4445,7 +4447,11 @@
       "selectionAlreadyOn": "選中的 {{count}} 個 Skill 已經在 {{app}} 啟用",
       "selectionAlreadyOff": "選中的 {{count}} 個 Skill 都沒有在 {{app}} 啟用",
       "disabledSelection": "已在 {{app}} 停用 {{count}} 個 {{noun}}",
-      "restartToApply": "已寫入 {{app}} 的設定，重新啟動 {{app}} 後生效。"
+      "restartToApply": "已寫入 {{app}} 的設定，重新啟動 {{app}} 後生效。",
+      "allAppsEnabled": "已在所有應用啟用 {{count}} 個 {{noun}}",
+      "allAppsDisabled": "已在所有應用停用 {{count}} 個 {{noun}}",
+      "selectionAllAppsAlreadyOn": "選中的 {{count}} 個 Skill 已經在所有應用啟用",
+      "selectionAllAppsAlreadyOff": "選中的 {{count}} 個 Skill 都沒有在任何應用啟用"
     },
     "installTo": {
       "prefix": "安裝到：",
@@ -4535,10 +4541,9 @@
       "notDisabled": "未勾選，但 {{app}} 還會從 ~/.agents/skills 等目錄載入它。點一下，在 {{app}} 設定裡關掉。"
     },
     "plugins": {
-      "title": "Claude Code 外掛",
-      "lead": "清單來自 Claude Code 自己的 claude plugin list。這裡只能開關個人和帳號同步的外掛；安裝、升級、外掛市集請在 Claude Code 裡用 /plugin。已開啟的 Claude Code 工作階段可能要重新啟動才生效。",
+      "lead": "勾選即在 Claude Code 裡啟用。只能開關個人和帳號同步的外掛；安裝、升級用 Claude Code 的 /plugin。重新啟動 Claude Code 後生效。",
       "refresh": "重新讀取",
-      "empty": "沒有已安裝的 Claude Code 外掛。",
+      "empty": "在 Claude Code 裡用 /plugin 安裝外掛後，會出現在這裡。",
       "skills": "附帶的 Skill：{{skills}}",
       "readOnly": "這一級的外掛請在 Claude Code 裡用 /plugin 管理。",
       "readOnlyProject": "屬於專案 {{path}}，請在那個專案裡用 /plugin 管理。",
@@ -4549,8 +4554,23 @@
         "managed": "組織託管",
         "synced": "帳號同步",
         "session": "本次工作階段"
-      }
-    }
+      },
+      "loading": "正在讀取 Claude Code 外掛…",
+      "loadFailed": "沒讀到 Claude Code 外掛",
+      "emptyTitle": "還沒有外掛",
+      "count": "{{count}} 個外掛",
+      "listLabel": "Claude Code 外掛",
+      "noSkills": "不附帶 Skill",
+      "toastEnabled": "已在 Claude Code 啟用 {{name}}",
+      "toastDisabled": "已在 Claude Code 停用 {{name}}",
+      "cell": {
+        "on": "{{name}} · Claude Code：已啟用",
+        "off": "{{name}} · Claude Code：未啟用"
+      },
+      "readOnlyOn": "已啟用（這裡不能開關）",
+      "readOnlyOff": "未啟用（這裡不能開關）"
+    },
+    "viewPlugins": "Claude Code 外掛"
   },
   "newLayoutNotice": {
     "title": "介面改版了",
