@@ -66,10 +66,23 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # 关掉自动更新包（它要私钥签名），用 ad-hoc 签名让 Apple Silicon 能运行。
+      # 缓存会带回上一次的 bundle/（旧的 dmg、挂载用的临时镜像），先清掉；hdiutil 在
+      # runner 上偶尔「资源忙」，打包失败就等一下重来一次（编译已缓存，只重做打包）。
       - name: Build dmg
-        run: >
-          pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
-          --config '{"bundle":{"createUpdaterArtifacts":false,"macOS":{"signingIdentity":"-"}}}'
+        shell: bash
+        run: |
+          bundle_dir=src-tauri/target/aarch64-apple-darwin/release/bundle
+          build() {
+            rm -rf "$bundle_dir"
+            pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg \
+              --config '{"bundle":{"createUpdaterArtifacts":false,"macOS":{"signingIdentity":"-"}}}'
+          }
+          if ! build; then
+            echo "::warning::dmg packaging failed, retrying once"
+            hdiutil info || true
+            sleep 15
+            build
+          fi
 
       - name: Upload dmg
         uses: actions/upload-artifact@v7
